@@ -158,10 +158,12 @@ if (isset($_ENV['PANTHEON_ENVIRONMENT']) && php_sapi_name() != 'cli') {
     $primary_domain = 'www.phtechcommunity.org';
   } 
   elseif ($_ENV['PANTHEON_ENVIRONMENT'] === 'test') {
-    $primary_domain = 'test.phtechcommunity.org';
+    // $primary_domain = 'test.phtechcommunity.org';
+    $primary_domain = $_SERVER['HTTP_HOST'];
   }
   elseif ($_ENV['PANTHEON_ENVIRONMENT'] === 'dev') {
-    $primary_domain = 'dev.phtechcommunity.org';
+    // $primary_domain = 'dev.phtechcommunity.org';
+    $primary_domain = $_SERVER['HTTP_HOST'];
   }
   else {
     // Redirect to HTTPS on every Pantheon environment.
