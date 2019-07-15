@@ -230,22 +230,16 @@ input[type="checkbox"] {
 	right: auto;
 }
 
-.tagcloud ul li {
+.widget .tagcloud a,
+.widget.widget_tag_cloud a,
+.wp_widget_tag_cloud a {
 	float: right;
-	margin: 4px 0 0 4px;
+	margin: 4px 0 0 4px !important; /* !important to override inline styles */
 }
 
 .widget ul li li {
 	padding-left: 0;
 	padding-right: 1.5rem;
-}
-
-.widget_text ul {
-	margin: 0 1.5em 1.5em 0;
-}
-
-.widget_text ul li ul {
-	margin: 0 1.5em 0 0;
 }
 
 /* Footer */
