@@ -74,16 +74,15 @@ else:
         // content warnings.
         if (isset($_SERVER['HTTP_USER_AGENT_HTTPS']) && $_SERVER['HTTP_USER_AGENT_HTTPS'] == 'ON') {
             $scheme = 'https';
+            $_SERVER['HTTPS'] = 'on';
         }
         define('WP_HOME', $scheme . '://' . $_SERVER['HTTP_HOST']);
         define('WP_SITEURL', $scheme . '://' . $_SERVER['HTTP_HOST']);
     }
     // Don't show deprecations; useful under PHP 5.5
     error_reporting(E_ALL ^ E_DEPRECATED);
-    // Force the use of a safe temp directory when in a container
-    if ( defined( 'PANTHEON_BINDING' ) ):
-        define( 'WP_TEMP_DIR', sprintf( '/srv/bindings/%s/tmp', PANTHEON_BINDING ) );
-    endif;
+    /** Define appropriate location for default tmp directory on Pantheon */
+    define('WP_TEMP_DIR', $_SERVER['HOME'] .'/tmp');
 
     // FS writes aren't permitted in test or live, so we should let WordPress know to disable relevant UI
     if ( in_array( $_ENV['PANTHEON_ENVIRONMENT'], array( 'test', 'live' ) ) && ! defined( 'DISALLOW_FILE_MODS' ) ) :
@@ -151,37 +150,6 @@ if ( ! defined( 'WP_DEBUG' ) ) {
 /* That's all, stop editing! Happy Pressing. */
 
 
-if (isset($_ENV['PANTHEON_ENVIRONMENT']) && php_sapi_name() != 'cli') {
-  // Redirect to https://$primary_domain in the Live environment
-  if ($_ENV['PANTHEON_ENVIRONMENT'] === 'live') {
-    /** Replace www.example.com with your registered domain name */
-    $primary_domain = 'www.phtechcommunity.org';
-  } 
-  elseif ($_ENV['PANTHEON_ENVIRONMENT'] === 'test') {
-    $primary_domain = 'test.phtechcommunity.org';
-  }
-  elseif ($_ENV['PANTHEON_ENVIRONMENT'] === 'dev') {
-    $primary_domain = 'dev.phtechcommunity.org';
-  }
-  else {
-    // Redirect to HTTPS on every Pantheon environment.
-    $primary_domain = $_SERVER['HTTP_HOST'];
-  }
-
-  if ($_SERVER['HTTP_HOST'] != $primary_domain
-      || !isset($_SERVER['HTTP_USER_AGENT_HTTPS'])
-      || $_SERVER['HTTP_USER_AGENT_HTTPS'] != 'ON' ) {
-
-    # Name transaction "redirect" in New Relic for improved reporting (optional)
-    if (extension_loaded('newrelic')) {
-      newrelic_name_transaction("redirect");
-    }
-
-    header('HTTP/1.0 301 Moved Permanently');
-    header('Location: https://'. $primary_domain . $_SERVER['REQUEST_URI']);
-    exit();
-  }
-}
 
 
 /** Absolute path to the WordPress directory. */
