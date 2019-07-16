@@ -44,7 +44,7 @@ pantheon.upstream.yml
 
 # OS generated files #
 ######################
-.DS_Store*
+.DS_Store*7
 ehthumbs.db
 Icon?
 Thumbs.db
@@ -57,3 +57,7 @@ Thumbs.db
 # SASS #
 ##########
 .sass-cache
+
+# Ph Tech Community scpeficic #
+###############################
+wp-config-custom.php
