@@ -147,8 +147,10 @@ if ( ! defined( 'WP_DEBUG' ) ) {
     define('WP_DEBUG', false);
 }
 
-if (file_exists(dirname(__FILE__) . '/wp-config-custom.php') && !isset($_ENV['PANTHEON_ENVIRONMENT'])):
+if ( file_exists( dirname( __FILE__ ) . '/wp-config-custom.php' ) && !isset( $_ENV['PANTHEON_ENVIRONMENT'] ) ) {
   require_once(dirname(__FILE__) . '/wp-config-custom.php');
+}
+
 
 /* That's all, stop editing! Happy Pressing. */
 
