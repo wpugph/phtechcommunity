@@ -4,3 +4,10 @@ api_version: 1
 php_version: 7.3
 protected_web_paths:
   - /wp-json/wp/v2/users
+
+protected_web_paths:
+  - /private/
+  - /wp-content/uploads/private/
+  - /xmlrpc.php
+
+protected_web_paths_override: false
