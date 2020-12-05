@@ -1,0 +1,72 @@
+{
+  "name": "pantheon-upstreams/wordpresss-project",
+  "description": "Install Wordpress with Composer on Pantheon",
+  "type": "project",
+  "keywords": [],
+  "repositories": [
+    {
+      "type": "composer",
+      "url": "https://wpackagist.org"
+    },
+    {
+      "type": "path",
+      "url": "upstream-config"
+    }
+  ],
+  "require": {
+    "pantheon-upstreams/upstream-config": "*"
+  },
+  "config": {
+    "vendor-dir": "vendor",
+    "preferred-install": "dist",
+    "optimize-autoloader": true,
+    "sort-packages": true,
+    "platform": {
+      "php": "7.2"
+    }
+  },
+  "extra": {
+    "wordpress-install-dir": "web/wp",
+    "build-env": {
+      "install-cms": [
+        "wp core install --title={site-name} --url={site-url} --admin_user={account-name} --admin_email={account-mail} --admin_password={account-pass}",
+        "wp option update permalink_structure '/%postname%/'"
+      ]
+    },
+    "installer-paths": {
+      "web/wp-content/plugins/{$name}/": ["type:wordpress-plugin"],
+      "web/wp-content/themes/{$name}/": ["type:wordpress-theme"],
+      "web/private/scripts/quicksilver/{$name}/": ["type:quicksilver-script"]
+    }
+  },
+  "autoload": {
+    "classmap": [
+      "scripts/composer/ScriptHandler.php"
+    ],
+    "psr-4": { "PantheonSystems\\WordHatHelpers\\": "tests/behat/helper_classes/" }
+  },
+  "scripts": {
+    "cleanup": [
+      "./scripts/composer/cleanup-composer"
+    ],
+    "post-install-cmd": [
+      "@cleanup",
+      "WordPressProject\\composer\\ScriptHandler::createRequiredFiles"
+    ],
+    "post-update-cmd": [
+      "@cleanup",
+      "WordPressProject\\composer\\ScriptHandler::createRequiredFiles"
+    ],
+    "post-create-project-cmd": [
+      "@cleanup",
+      "WordPressProject\\composer\\ScriptHandler::createRequiredFiles"
+    ],
+    "code-sniff": [
+      "./vendor/bin/phpcs --standard=WordPress ./web/wp-content"
+    ],
+    "unit-test": [
+      "./vendor/bin/phpunit tests/unit/*"
+    ],
+    "lint": "find web/wp-content -name '*.php' -exec php -l {} \\;"
+  }
+}
