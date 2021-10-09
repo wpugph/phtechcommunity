@@ -2,11 +2,13 @@
 
 /**
  * Plugin Name: Sucuri Security - Auditing, Malware Scanner and Hardening
- * Description: The <a href="https://sucuri.net/" target="_blank">Sucuri</a> plugin provides the website owner the best Activity Auditing, SiteCheck Remote Malware Scanning, Effective Security Hardening and Post-Hack features. SiteCheck will check for malware, spam, blacklisting and other security issues like .htaccess redirects, hidden eval code, etc. The best thing about it is it's completely free.
+ * Description: The <a href="https://sucuri.net/" target="_blank">Sucuri</a> plugin provides the website owner the best Activity Auditing, SiteCheck Remote Malware Scanning, Effective Security Hardening and Post-Hack features. SiteCheck will check for malware, spam, blocklisting and other security issues like .htaccess redirects, hidden eval code, etc. The best thing about it is it's completely free.
  * Plugin URI: https://wordpress.sucuri.net/
  * Author URI: https://sucuri.net/
  * Author: Sucuri Inc.
- * Version: 1.8.12
+ * Text Domain: sucuri-scanner
+ * Domain Path: /lang
+ * Version: 1.8.30
  *
  * PHP version 5
  *
@@ -14,7 +16,7 @@
  * @package    Sucuri
  * @subpackage SucuriScanner
  * @author     Daniel Cid <dcid@sucuri.net>
- * @copyright  2010-2017 Sucuri Inc.
+ * @copyright  2010-2018 Sucuri Inc.
  * @license    https://www.gnu.org/licenses/gpl-2.0.txt GPL2
  * @link       https://wordpress.org/plugins/sucuri-scanner
  */
@@ -59,7 +61,7 @@ foreach ($sucuriscan_dependencies as $dependency) {
 }
 
 /* check if installation path is available */
-if (!defined('ABSPATH')) {
+if (!defined('ABSPATH') || !defined('WP_CONTENT_DIR')) {
     /* Report invalid access if possible. */
     header('HTTP/1.1 403 Forbidden');
     exit(0);
@@ -83,7 +85,12 @@ define('SUCURISCAN', 'sucuriscan');
 /**
  * Current version of the plugin's code.
  */
-define('SUCURISCAN_VERSION', '1.8.12');
+define('SUCURISCAN_VERSION', '1.8.30');
+
+/**
+ * Defines the human readable name of the plugin.
+ */
+define('SUCURISCAN_PLUGIN_NAME', 'Sucuri Security - Auditing, Malware Scanner and Hardening');
 
 /**
  * The name of the folder where the plugin's files will be located.
@@ -188,12 +195,20 @@ if (!array_key_exists('SERVER_NAME', $_SERVER)) {
     $_SERVER['SERVER_NAME'] = 'localhost';
 }
 
+/* Load plugin translations */
+function sucuriscan_load_plugin_textdomain()
+{
+    load_plugin_textdomain('sucuri-scanner', false, basename(dirname(__FILE__)) . '/lang/');
+}
+add_action('plugins_loaded', 'sucuriscan_load_plugin_textdomain');
+
 /* Load all classes before anything else. */
-require_once 'src/sucuriscan.lib.php';
+require_once 'src/base.lib.php';
 require_once 'src/request.lib.php';
 require_once 'src/fileinfo.lib.php';
 require_once 'src/cache.lib.php';
 require_once 'src/option.lib.php';
+require_once 'src/cron.lib.php';
 require_once 'src/event.lib.php';
 require_once 'src/hook.lib.php';
 require_once 'src/api.lib.php';
@@ -205,6 +220,7 @@ require_once 'src/hardening.lib.php';
 require_once 'src/interface.lib.php';
 require_once 'src/auditlogs.lib.php';
 require_once 'src/sitecheck.lib.php';
+require_once 'src/wordpress-recommendations.lib.php';
 require_once 'src/integrity.lib.php';
 require_once 'src/firewall.lib.php';
 require_once 'src/installer-skin.lib.php';
@@ -216,7 +232,6 @@ require_once 'src/pagehandler.php';
 require_once 'src/lastlogins.php';
 require_once 'src/lastlogins-loggedin.php';
 require_once 'src/lastlogins-failed.php';
-require_once 'src/lastlogins-blocked.php';
 
 /* Load handlers for main pages (settings). */
 require_once 'src/settings.php';
@@ -238,24 +253,38 @@ if (defined('WP_CLI') && WP_CLI) {
 }
 
 /**
- * Uninstalls the plugin, its settings and reverts the hardening.
+ * Deactivated the plugin
  *
- * When the user decides to deactivate and/or uninstall the plugin it will call
- * this method to delete all traces of data inserted into the database by older
- * versions of the code, will remove the scheduled task, will delte the options
- * inserted into the sub-database associated to a multi-site installation, will
- * revert the hardening applied to the core directories, and will delete all the
- * security logs, cache and additional data stored in the storage directory.
+ * Remove the scheduled task, but don't clear other things yet until the plugin is uninstalled.
  *
  * @return void
  */
 function sucuriscanResetAndDeactivate()
 {
+    /* Delete scheduled task from the system */
+    wp_clear_scheduled_hook('sucuriscan_scheduled_scan');
+    SucuriScanEvent::reportDebugEvent('Sucuri plugin has been deactivated');
+}
+
+/**
+ * Uninstalled the plugin
+ *
+ * When the user decides to uninstall the plugin it will call this method to
+ * delete all traces of data inserted into the database by older versions of the
+ * code, will delete the options inserted into the sub-database associated to a
+ * multi-site installation, will revert the hardening applied to the core
+ * directories, and will delete all the logs, cache and additional data stored
+ * in the storage directory.
+ *
+ * @return void
+ */
+function sucuriscanUninstall()
+{
     if (array_key_exists('wpdb', $GLOBALS)) {
         /* Delete all plugin related options from the database */
         $options = $GLOBALS['wpdb']->get_results(
             'SELECT option_id, option_name FROM ' . $GLOBALS['wpdb']->options
-            . ' WHERE option_name LIKE "' . SUCURISCAN . '%"'
+                . ' WHERE option_name LIKE "' . SUCURISCAN . '%"'
         );
 
         foreach ($options as $option) {
@@ -263,9 +292,6 @@ function sucuriscanResetAndDeactivate()
             delete_option($option->option_name);
         }
     }
-
-    /* Delete scheduled task from the system */
-    wp_clear_scheduled_hook('sucuriscan_scheduled_scan');
 
     /* Delete settings from the database if they exist */
     $options = SucuriScanOption::getDefaultOptionNames();
@@ -275,8 +301,8 @@ function sucuriscanResetAndDeactivate()
     }
 
     /* Delete hardening in standard directories */
-    SucuriScanHardening::dewhitelist('ms-files.php', 'wp-includes');
-    SucuriScanHardening::dewhitelist('wp-tinymce.php', 'wp-includes');
+    SucuriScanHardening::removeFromAllowlist('ms-files.php', 'wp-includes');
+    SucuriScanHardening::removeFromAllowlist('wp-tinymce.php', 'wp-includes');
     SucuriScanHardening::unhardenDirectory(WP_CONTENT_DIR);
     SucuriScanHardening::unhardenDirectory(WP_CONTENT_DIR . '/uploads');
     SucuriScanHardening::unhardenDirectory(ABSPATH . '/wp-includes');
@@ -289,6 +315,10 @@ function sucuriscanResetAndDeactivate()
     $fifo->run_recursively = false;
     $directory = SucuriScan::dataStorePath();
     $fifo->removeDirectoryTree($directory);
+
+    SucuriScanEvent::reportDebugEvent(__('Sucuri plugin has been uninstalled', 'sucuri-scanner'));
 }
 
 register_deactivation_hook(__FILE__, 'sucuriscanResetAndDeactivate');
+
+register_uninstall_hook(__FILE__, 'sucuriscanUninstall');

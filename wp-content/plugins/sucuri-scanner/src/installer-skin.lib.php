@@ -9,7 +9,7 @@
  * @package    Sucuri
  * @subpackage SucuriScanner
  * @author     Daniel Cid <dcid@sucuri.net>
- * @copyright  2010-2017 Sucuri Inc.
+ * @copyright  2010-2018 Sucuri Inc.
  * @license    https://www.gnu.org/licenses/gpl-2.0.txt GPL2
  * @link       https://wordpress.org/plugins/sucuri-scanner
  */
@@ -27,6 +27,11 @@ if (class_exists('SucuriScanInterface') && class_exists('SucuriScanRequest')) {
         include_once ABSPATH . '/wp-admin/includes/class-wp-upgrader.php';
         include_once ABSPATH . '/wp-admin/includes/plugin-install.php';
 
+        if (version_compare(SucuriScan::siteVersion(), '5.3', '<')) {
+            include_once 'installer-skin-legacy.lib.php';
+            return;
+        }
+
         /**
          * Plugin Installer Skin for WordPress Plugin Installer.
          *
@@ -42,7 +47,7 @@ if (class_exists('SucuriScanInterface') && class_exists('SucuriScanRequest')) {
          * @package    Sucuri
          * @subpackage SucuriScanner
          * @author     Daniel Cid <dcid@sucuri.net>
-         * @copyright  2010-2017 Sucuri Inc.
+         * @copyright  2010-2018 Sucuri Inc.
          * @license    https://www.gnu.org/licenses/gpl-2.0.txt GPL2
          * @link       https://wordpress.org/plugins/sucuri-scanner
          */
@@ -51,10 +56,12 @@ if (class_exists('SucuriScanInterface') && class_exists('SucuriScanRequest')) {
             /**
              * Reports the progress of the plugin installation.
              *
-             * @param  string $string Message to send to the buffer.
+             * @param string $string  Message to display in administration message.
+             * @param mixed  ...$args Optional text replacements.
+             *
              * @return void
              */
-            public function feedback($string = '')
+            public function feedback($string, ...$args)
             {
                 /* do not do anything */
             }

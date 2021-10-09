@@ -9,7 +9,7 @@
  * @package    Sucuri
  * @subpackage SucuriScanner
  * @author     Daniel Cid <dcid@sucuri.net>
- * @copyright  2010-2017 Sucuri Inc.
+ * @copyright  2010-2018 Sucuri Inc.
  * @license    https://www.gnu.org/licenses/gpl-2.0.txt GPL2
  * @link       https://wordpress.org/plugins/sucuri-scanner
  */
@@ -46,7 +46,7 @@ if (!defined('SUCURISCAN_INIT') || SUCURISCAN_INIT !== true) {
  * @package    Sucuri
  * @subpackage SucuriScanner
  * @author     Daniel Cid <dcid@sucuri.net>
- * @copyright  2010-2017 Sucuri Inc.
+ * @copyright  2010-2018 Sucuri Inc.
  * @license    https://www.gnu.org/licenses/gpl-2.0.txt GPL2
  * @link       https://wordpress.org/plugins/sucuri-scanner
  * @see        https://codex.wordpress.org/Option_Reference
@@ -81,7 +81,7 @@ class SucuriScanOption extends SucuriScanRequest
             'sucuriscan_maximum_failed_logins' => 30,
             'sucuriscan_notify_available_updates' => 'disabled',
             'sucuriscan_notify_bruteforce_attack' => 'disabled',
-            'sucuriscan_notify_failed_login' => 'enabled',
+            'sucuriscan_notify_failed_login' => 'disabled',
             'sucuriscan_notify_plugin_activated' => 'enabled',
             'sucuriscan_notify_plugin_change' => 'enabled',
             'sucuriscan_notify_plugin_deactivated' => 'disabled',
@@ -91,7 +91,7 @@ class SucuriScanOption extends SucuriScanRequest
             'sucuriscan_notify_post_publication' => 'enabled',
             'sucuriscan_notify_scan_checksums' => 'disabled',
             'sucuriscan_notify_settings_updated' => 'enabled',
-            'sucuriscan_notify_success_login' => 'enabled',
+            'sucuriscan_notify_success_login' => 'disabled',
             'sucuriscan_notify_theme_activated' => 'enabled',
             'sucuriscan_notify_theme_deleted' => 'disabled',
             'sucuriscan_notify_theme_editor' => 'enabled',
@@ -145,7 +145,7 @@ class SucuriScanOption extends SucuriScanRequest
             $admin_email = get_option('admin_email');
             $default['sucuriscan_account'] = $admin_email;
             $default['sucuriscan_notify_to'] = $admin_email;
-            $default['sucuriscan_email_subject'] = 'Sucuri Alert, :domain, :event, :remoteaddr';
+            $default['sucuriscan_email_subject'] = sprintf(__('Sucuri Alert, %s, %s, %s', 'sucuri-scanner'), ':domain', ':event', ':remoteaddr');
         }
 
         return @$default[$option];
@@ -178,7 +178,7 @@ class SucuriScanOption extends SucuriScanRequest
      */
     public static function getAllOptions()
     {
-        $options = wp_cache_get('alloptions', SUCURISCAN, WP_DEBUG);
+        $options = wp_cache_get('alloptions', SUCURISCAN);
 
         if ($options && is_array($options)) {
             return $options;
