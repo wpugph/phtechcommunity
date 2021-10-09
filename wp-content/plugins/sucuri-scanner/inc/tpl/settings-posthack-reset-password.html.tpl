@@ -1,6 +1,6 @@
 
 <div class="sucuriscan-panel">
-    <h3 class="sucuriscan-title">Reset User Password</h3>
+    <h3 class="sucuriscan-title">{{Reset User Password}}</h3>
 
     <script type="text/javascript">
     /* global jQuery */
@@ -13,7 +13,7 @@
 
                 $('#sucuriscan-userid-' + user_id)
                 .find('.sucuriscan-response')
-                .html('(Loading...)');
+                .html('({{Loading...}})');
 
                 $.post('%%SUCURI.AjaxURL.Dashboard%%', {
                     action: 'sucuriscan_ajax',
@@ -31,19 +31,19 @@
     </script>
 
     <div class="inside">
-        <p>You can generate a new random password for the user accounts that you select from the list. An email with the new password will be sent to the email address of each chosen users. If you choose to change the password of your own user, then your current session will expire immediately. You will need to log into the admin panel with the new password that will be sent to your email.</p>
+        <p>{{Select users from the list in order to change their passwords, terminate their sessions and email them a password reset link. Please be aware that the plugin will change the passwords before sending the emails, meaning that if your web server is unable to send emails, your users will be locked out of the site.}}</p>
 
         <table class="wp-list-table widefat sucuriscan-table sucuriscan-reset-password-table">
             <thead>
                 <tr>
                     <td id="cb" class="manage-column column-cb check-column">
-                        <label class="screen-reader-text" for="cb-select-all-1">Select All</label>
+                        <label class="screen-reader-text" for="cb-select-all-1">{{Select All}}</label>
                         <input id="cb-select-all-1" type="checkbox">
                     </td>
-                    <th class="manage-column">Username</th>
-                    <th class="manage-column">E-mail</th>
-                    <th class="manage-column">Registered</th>
-                    <th class="manage-column">Roles</th>
+                    <th class="manage-column">{{Username}}</th>
+                    <th class="manage-column">{{E-mail}}</th>
+                    <th class="manage-column">{{Registered}}</th>
+                    <th class="manage-column">{{Roles}}</th>
                 </tr>
             </thead>
 
@@ -61,6 +61,6 @@
         </table>
 
         <button type="button" id="sucuriscan-reset-password-button"
-        class="button button-primary">Submit</button>
+        class="button button-primary" data-cy="sucuriscan-reset-password-button">{{Submit}}</button>
     </div>
 </div>

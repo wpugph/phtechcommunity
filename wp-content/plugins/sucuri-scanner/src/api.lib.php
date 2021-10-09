@@ -9,7 +9,7 @@
  * @package    Sucuri
  * @subpackage SucuriScanner
  * @author     Daniel Cid <dcid@sucuri.net>
- * @copyright  2010-2017 Sucuri Inc.
+ * @copyright  2010-2018 Sucuri Inc.
  * @license    https://www.gnu.org/licenses/gpl-2.0.txt GPL2
  * @link       https://wordpress.org/plugins/sucuri-scanner
  */
@@ -43,7 +43,7 @@ if (!defined('SUCURISCAN_INIT') || SUCURISCAN_INIT !== true) {
  * @package    Sucuri
  * @subpackage SucuriScanner
  * @author     Daniel Cid <dcid@sucuri.net>
- * @copyright  2010-2017 Sucuri Inc.
+ * @copyright  2010-2018 Sucuri Inc.
  * @license    https://www.gnu.org/licenses/gpl-2.0.txt GPL2
  * @link       https://wordpress.org/plugins/sucuri-scanner
  */
@@ -88,11 +88,11 @@ class SucuriScanAPI extends SucuriScanOption
     public static function apiCall($url = '', $method = 'GET', $params = array(), $args = array())
     {
         if (!$url) {
-            return self::throwException('URL is invalid');
+            return self::throwException(__('URL is invalid', 'sucuri-scanner'));
         }
 
         if ($method !== 'GET' && $method !== 'POST') {
-            return self::throwException('Only GET and POST methods allowed');
+            return self::throwException(__('Only GET and POST methods allowed', 'sucuri-scanner'));
         }
 
         $res = null;
@@ -179,11 +179,11 @@ class SucuriScanAPI extends SucuriScanOption
     public static function setPluginKey($api_key = '', $validate = false)
     {
         if ($validate && !self::isValidKey($api_key)) {
-            return SucuriScanInterface::error('Invalid API key format');
+            return SucuriScanInterface::error(__('Invalid API key format', 'sucuri-scanner'));
         }
 
         if (!empty($api_key)) {
-            SucuriScanEvent::notifyEvent('plugin_change', 'API key was successfully set: ' . $api_key);
+            SucuriScanEvent::notifyEvent('plugin_change', sprintf(__('API key was successfully set: %s', 'sucuri-scanner'), $api_key));
         }
 
         return self::updateOption(':api_key', $api_key);
@@ -274,7 +274,7 @@ class SucuriScanAPI extends SucuriScanOption
             || !isset($res['messages'])
             || empty($res['messages'])
         ) {
-            return SucuriScanInterface::error('Unknown error, there is no information');
+            return SucuriScanInterface::error(__('Unknown error, there is no information', 'sucuri-scanner'));
         }
 
         $msg = implode(".\x20", $res['messages']);
@@ -297,7 +297,6 @@ class SucuriScanAPI extends SucuriScanOption
 
             SucuriScanOption::setRevProxy('disable', true);
             SucuriScanOption::setAddrHeader('REMOTE_ADDR', true);
-            SucuriScanOption::deleteOption(':cloudproxy_apikey');
 
             return SucuriScanInterface::error($msg);
         }
@@ -315,7 +314,7 @@ class SucuriScanAPI extends SucuriScanOption
 
         // Check if the MX records as missing for API registration.
         if (strpos($raw, 'Invalid email') !== false) {
-            $msg = 'Invalid email format or the host is missing MX records.';
+            $msg = __('Invalid email format or the host is missing MX records.', 'sucuri-scanner');
         }
 
         return SucuriScanInterface::error($msg);
@@ -350,9 +349,9 @@ class SucuriScanAPI extends SucuriScanOption
         self::setPluginKey($res['output']['api_key']);
 
         SucuriScanEvent::installScheduledTask();
-        SucuriScanEvent::notifyEvent('plugin_change', 'API key was generated and set');
+        SucuriScanEvent::notifyEvent('plugin_change', __('API key was generated and set', 'sucuri-scanner'));
 
-        return SucuriScanInterface::info('API key successfully generated and saved.');
+        return SucuriScanInterface::info(__('API key successfully generated and saved.', 'sucuri-scanner'));
     }
 
     /**
@@ -378,7 +377,7 @@ class SucuriScanAPI extends SucuriScanOption
             return false;
         }
 
-        SucuriScanEvent::notifyEvent('plugin_change', 'API key recovery for domain: ' . $domain);
+        SucuriScanEvent::notifyEvent('plugin_change', sprintf(__('API key recovery for domain: %s', 'sucuri-scanner'), $domain));
 
         return SucuriScanInterface::info($res['output']['message']);
     }
@@ -408,7 +407,9 @@ class SucuriScanAPI extends SucuriScanOption
 
     /**
      * Returns the security logs from the system queue.
-     *
+     * In case the logs comes from the queue, set key "from_queue" to true,
+     * as the parse function later will need to prevent timezone conflicts.
+     * 
      * @return array The data structure with the logs.
      */
     public static function getAuditLogsFromQueue()
@@ -444,6 +445,7 @@ class SucuriScanAPI extends SucuriScanOption
             'verbose' => 0,
             'output' => array_reverse($auditlogs),
             'total_entries' => count($auditlogs),
+            'from_queue' => '1',
         );
 
         return self::parseAuditLogs($res);
@@ -490,8 +492,44 @@ class SucuriScanAPI extends SucuriScanOption
             $log_data['message'] = $right;
             $log_data['account'] = $dateAndEmail[2];
 
-            /* extract and fix the date and time using the Eastern time zone */
-            $datetime = sprintf('%s %s EDT', $dateAndEmail[0], $dateAndEmail[1]);
+            /**
+             * When the audit logs comes from the queue, it's necessary to convert
+             * the logs using the correct timezone before parsing to avoid issues.
+             * First, use timezone override feature if set on the plugin settings,
+             * convert it properly as the syntax must be compatible with php strtotime,
+             * otherwise use WordPress timezone or offset with a quick fix only for UTC
+             * as by default it would be set as "0" instead of "UTC".
+             */
+            $tz_override = SucuriScanOption::getOption(':timezone');
+            if (empty($tz_override)) {
+                $wpTimezone = get_option('timezone_string');
+                if (empty($wpTimezone)) {
+                    $wpTimezone = get_option('gmt_offset');
+                }
+                
+                /* set wpTimezone to UTC if was previously unset */
+                if ($wpTimezone == "0") {
+                    $wpTimezone = "UTC";
+                }
+            } else {
+                $tz_override_replace_from = array(".", "UTC");
+                $tz_override_replace_to = array(":", "");
+                $wpTimezone = str_replace($tz_override_replace_from, $tz_override_replace_to, $tz_override);
+            }
+            
+            /**
+             * When the audit logs comes from the audit logs server, it will
+             * be using EDT timezone, however due to the seasonal nature of the
+             * EDT timzeone, here we will be using America/New_York when and only
+             * when the audit logs comes from the audit logs server, cause when
+             * it comes from the queue, wpTimezone var will be used.
+             */
+            if (array_key_exists('from_queue', $res)) {
+                $datetime = sprintf('%s %s %s', $dateAndEmail[0], $dateAndEmail[1], $wpTimezone);
+            } else {
+                $datetime = sprintf('%s %s America/New_York', $dateAndEmail[0], $dateAndEmail[1]);
+            }
+            
             $log_data['timestamp'] = strtotime($datetime);
             $log_data['datetime'] = SucuriScan::datetime($log_data['timestamp'], 'Y-m-d H:i:s');
             $log_data['date'] = SucuriScan::datetime($log_data['timestamp'], 'Y-m-d');
@@ -607,7 +645,7 @@ class SucuriScanAPI extends SucuriScanOption
             $name = substr($data['message'], $offset + 6);
 
             $data['message'] = sprintf(
-                'WP Engine PHP Compatibility Checker: %s (created post #%d as cache)',
+                __('WP Engine PHP Compatibility Checker: %s (created post #%d as cache)', 'sucuri-scanner'),
                 $name, /* plugin or theme name */
                 $id /* unique post or page identifier */
             );
@@ -950,12 +988,12 @@ class SucuriScanAPI extends SucuriScanOption
 
         if (strpos($resp, '404 Not Found') !== false) {
             /* not found comes from the official WordPress API */
-            return self::throwException('WordPress version is not supported anymore');
+            return self::throwException(__('WordPress version is not supported anymore', 'sucuri-scanner'));
         }
 
         if (strpos($resp, '400: Invalid request') !== false) {
             /* invalid request comes from the unofficial GitHub API */
-            return self::throwException('WordPress version is not supported anymore');
+            return self::throwException(__('WordPress version is not supported anymore', 'sucuri-scanner'));
         }
 
         return $resp ? $resp : false;

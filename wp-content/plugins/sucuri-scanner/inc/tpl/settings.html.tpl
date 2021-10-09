@@ -1,13 +1,13 @@
 
 <div class="sucuriscan-tabs">
     <ul class="sucuriscan-clearfix sucuriscan-tabs-buttons">
-        <li><a href="%%SUCURI.URL.Settings%%#general">General</a></li>
-        <li><a href="%%SUCURI.URL.Settings%%#scanner">Scanner</a></li>
-        <li><a href="%%SUCURI.URL.Settings%%#hardening">Hardening</a></li>
-        <li><a href="%%SUCURI.URL.Settings%%#posthack">Post-Hack</a></li>
-        <li><a href="%%SUCURI.URL.Settings%%#alerts">Alerts</a></li>
-        <li><a href="%%SUCURI.URL.Settings%%#apiservice">API Service Communication</a></li>
-        <li><a href="%%SUCURI.URL.Settings%%#webinfo">Website Info</a></li>
+        <li><a href="%%SUCURI.URL.Settings%%#general">{{General Settings}}</a></li>
+        <li><a href="%%SUCURI.URL.Settings%%#scanner">{{Scanner}}</a></li>
+        <li><a href="%%SUCURI.URL.Settings%%#hardening">{{Hardening}}</a></li>
+        <li><a href="%%SUCURI.URL.Settings%%#posthack">{{Post-Hack}}</a></li>
+        <li><a href="%%SUCURI.URL.Settings%%#alerts">{{Alerts}}</a></li>
+        <li><a href="%%SUCURI.URL.Settings%%#apiservice">{{API Service Communication}}</a></li>
+        <li><a href="%%SUCURI.URL.Settings%%#webinfo">{{Website Info}}</a></li>
     </ul>
 
     <div class="sucuriscan-tabs-containers">
@@ -41,14 +41,12 @@
 
         <div id="sucuriscan-tabs-hardening">
             <div class="sucuriscan-panel">
-                <h3 class="sucuriscan-title">Hardening Options</h3>
+                <h3 class="sucuriscan-title">{{Hardening Options}}</h3>
 
                 <div class="inside">
                     %%%SUCURI.Settings.Hardening.Firewall%%%
 
                     %%%SUCURI.Settings.Hardening.WPVersion%%%
-
-                    %%%SUCURI.Settings.Hardening.PHPVersion%%%
 
                     %%%SUCURI.Settings.Hardening.RemoveGenerator%%%
 
@@ -65,10 +63,12 @@
                     %%%SUCURI.Settings.Hardening.AdminUser%%%
 
                     %%%SUCURI.Settings.Hardening.FileEditor%%%
+
+                    %%%SUCURI.Settings.Hardening.SecKeyUpdater%%%
                 </div>
             </div>
 
-            %%%SUCURI.Settings.Hardening.WhitelistPHPFiles%%%
+            %%%SUCURI.Settings.Hardening.AllowlistPHPFiles%%%
         </div>
 
         <div id="sucuriscan-tabs-posthack">
