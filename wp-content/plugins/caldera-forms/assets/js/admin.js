@@ -1,9 +1,9 @@
 var baldrickTriggers, loop_loader;
 
-jQuery(document).ready(function($){
+jQuery( function(){
 	var adminAJAX;
-	if( 'object' == typeof  CF_ADMIN ){
-		adminAJAX = CF_ADMIN.adminAjax
+	if( 'object' === typeof  CF_ADMIN ){
+		adminAJAX = CF_ADMIN.adminAjax;
 	}else{
 		//yolo
 		adminAJAX = ajaxurl;
@@ -12,14 +12,13 @@ jQuery(document).ready(function($){
 	// admin stuff!
 	// Baldrick Bindings
 	baldrickTriggers = function(){
-		$('.ajax-trigger').baldrick({
+		jQuery('.ajax-trigger').baldrick({
 			request			:	adminAJAX,
 			method			:	'POST',
 			before			:	function( el, e ){
-				var clicked = $( el );
+				var clicked = jQuery( el );
 				// check for a nonce
-
-				var nonce 		= $('#cf_toolbar_actions'),
+				var nonce 		= jQuery('#cf_toolbar_actions'),
 					referer		= nonce.parent().find('[name="_wp_http_referer"]');
 
 				if( nonce.length && referer.length ){
@@ -29,16 +28,15 @@ jQuery(document).ready(function($){
 
 				if( clicked.data('trigger') ){
 					e.preventDefault();
-					var trigger = $( clicked.data('trigger') );
-
+					var trigger = jQuery( clicked.data('trigger') );
 					trigger.trigger( ( trigger.data('event') ? trigger.data('event') : 'click' ) );
 					return false;
 				}
 			},
 			complete		:	function(){
 				// check for init function
-				$('.init_field_type[data-type]').each(function(k,v){
-					var ftype = $(v);
+				jQuery('.init_field_type[data-type]').each(function(k,v){
+					var ftype = jQuery(v);
 					if( typeof window[ftype.data('type') + '_init'] === 'function' ){
 						window[ftype.data('type') + '_init'](ftype.prop('id'), ftype[0]);
 					}
@@ -57,12 +55,12 @@ jQuery(document).ready(function($){
 
 
 	// Profile TABS
-	$('body').on('click', '.modal-side-tab', function(e){
+	jQuery('body').on('click', '.modal-side-tab', function(e){
 		e.preventDefault();
-		var clicked = $(this),
+		var clicked = jQuery(this),
 			parent = clicked.closest('.caldera-modal-body'),
 			panels = parent.find('.tab-detail-panel'),
-			panel = $(clicked.attr('href'));
+			panel = jQuery(clicked.attr('href'));
 
 		parent.find('.modal-side-tab.active').removeClass('active');
 		clicked.addClass('active');
@@ -72,11 +70,11 @@ jQuery(document).ready(function($){
 	});
 
 	// Profile Repeatable Group Remove
-	$('body').on('click', '.caldera-group-remover', function(e){
+	jQuery('body').on('click', '.caldera-group-remover', function(e){
 
 		e.preventDefault();
 
-		var clicked = $(this),
+		var clicked = jQuery(this),
 			parent = clicked.closest('.caldera-repeater-group');
 
 		parent.slideUp(200, function(){
@@ -86,8 +84,8 @@ jQuery(document).ready(function($){
 
 	});
 
-	$('body').on('click', '.form-delete a.form-control', function(e){
-		var clicked = $(this);
+	jQuery('body').on('click', '.form-delete a.form-control', function(e){
+		var clicked = jQuery(this);
 		if(confirm(clicked.data('confirm'))){
 			return;
 		}else{
@@ -97,17 +95,17 @@ jQuery(document).ready(function($){
 	});
 
 	// bind slugs
-	$('body').on('keyup change', '[data-format="key"]', function(e){
+	jQuery('body').on('keyup change', '[data-format="key"]', function(e){
 		this.value = this.value.replace(/[^a-z0-9]/gi, '-').toLowerCase();
 	});
-	$('body').on('keyup change', '[data-format="slug"]', function(e){
+	jQuery('body').on('keyup change', '[data-format="slug"]', function(e){
 		this.value = this.value.replace(/[^a-z0-9]/gi, '_').toLowerCase();
 	});
 
-	$( window ).on('resize', function(){
+	jQuery( window ).on('resize', function(){
 
-		var list_toggle = $('#cf_forms_toggle'),
-			forms_panel = $('.form-panel-wrap');
+		var list_toggle = jQuery('#cf_forms_toggle'),
+			forms_panel = jQuery('.form-panel-wrap');
 
 		if( window.innerWidth <= 1420 ){
 			if( list_toggle.is(':visible') && forms_panel.is(':visible') ){
@@ -117,18 +115,78 @@ jQuery(document).ready(function($){
 	});
 
 
-	//setup clippy on admin, not edit
-	var CFclippy;
-	if( undefined != typeof  CF_CLIPPY && 'object' == typeof  CF_CLIPPY ){
-		CFclippy = new CalderaFormsAdminClippys2(  'caldera-forms-clippy', CF_CLIPPY, $ );
-		CFclippy.init();
-	}
+  /**
+   * Delete all entries saved in a form form Settings tab in the form
+   *
+   * @since 1.7.0
+   */
+  //Display controls
+  jQuery('#caldera-forms-delete-all-form-entries').on('click', function(e) {
+    e.preventDefault();
+    jQuery('#caldera-forms-confirm-delete-all-form-entries').slideToggle("fast");
+  });
+  //No clicked
+  jQuery('#caldera-forms-no-confirm-delete-all-form-entries').on('click',function(e) {
+    e.preventDefault();
+    jQuery('#caldera-forms-confirm-delete-all-form-entries').slideToggle("fast");
+  });
+  //Yes clicked
+  jQuery('#caldera-forms-yes-confirm-delete-all-form-entries').on('click',function(e) {
+    e.preventDefault();
 
-	$( '.cf-entry-viewer-link' ).on( 'click', function(){
-		if ( 'object' == typeof  CFclippy ){
-			CFclippy.remove();
-		}
-	});
+    var url = CF_ADMIN.rest.delete_entries;
+
+    var $spinner = jQuery( '#caldera-forms-delete-entries-spinner' );
+    $spinner.css({
+      visibility: 'visible',
+      float:'none'
+    });
+
+    wp.apiRequest({
+      url: url,
+      method: 'GET'
+      }).then(function (r) {
+      if( r.hasOwnProperty( 'message' ) ) {
+        if (r.deleted === true) {
+          jQuery('#caldera-forms-label-delete-all-entries').append("<div class='caldera-forms-deleted'>" + r.message + "</div>");
+          setTimeout(function () {
+            jQuery('.caldera-forms-deleted').remove();
+          }, 5000);
+          jQuery('#caldera-forms-confirm-delete-all-form-entries').slideToggle("fast");
+        } else {
+          jQuery('#caldera-forms-label-delete-all-entries').append("<div class='caldera-forms-not-deleted'>" + r.message + "</div>");
+          setTimeout(function () {
+            jQuery('.caldera-forms-not-deleted').remove();
+          }, 5000);
+          jQuery('#caldera-forms-confirm-delete-all-form-entries').slideToggle("fast");
+        }
+      }
+      $spinner.css({
+        visibility: 'hidden',
+        float:'none'
+      });
+
+    }).fail(function (r) {
+      if( r.responseJSON.hasOwnProperty( 'message' ) ) {
+        jQuery('#caldera-forms-label-delete-all-entries').append("<div class='caldera-forms-not-deleted'>" + r.responseJSON.message + "</div>");
+        setTimeout(function () {
+          jQuery('.caldera-forms-not-deleted').remove();
+        }, 5000);
+        jQuery('#caldera-forms-confirm-delete-all-form-entries').slideToggle("fast");
+      }
+      $spinner.css({
+        visibility: 'hidden',
+        float:'none'
+      });
+    });
+
+  });
+
+  // This allows baldrick function to be triggered via elements that are not on the DOM after document first load
+  // Adaptation for WP > 5.6
+  jQuery('.ajax-trigger').on('click', function(e) {
+	baldrickTriggers( this, e );
+  });
 
 });
 

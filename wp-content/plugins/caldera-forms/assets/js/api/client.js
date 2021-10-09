@@ -36,9 +36,9 @@ function CFAPI( routes, perPage, formId, tokens,  $ ) {
                 beforeSend: function ( xhr ) {
                     addHeaders( xhr );
                 }
-            }).success(function (r) {
+            }).done(function (r) {
                 return r;
-            }).error(function (r) {
+            }).fail(function (r) {
                 console.log(r);
             });
         },
@@ -49,9 +49,9 @@ function CFAPI( routes, perPage, formId, tokens,  $ ) {
                 beforeSend: function ( xhr ) {
                     addHeaders( xhr );
                 }
-            } ).success(function (r) {
+            } ).done(function (r) {
                 return r;
-            }).error(function (r) {
+            }).fail(function (r) {
                 console.log(r);
             });
         },
@@ -61,7 +61,11 @@ function CFAPI( routes, perPage, formId, tokens,  $ ) {
                 per_page: perPage
             });
 
-            return routes.entries + formId + '?' + params
+            //If pretty permalinks are enabled params need to be prefixed with "?"
+            //Else there already is a "?" so we need to add a "&"
+            //@see https://github.com/CalderaWP/Caldera-Forms/pull/3576#issuecomment-655563315
+            var divider = routes.entries.indexOf('?') === -1 ? '?' : '&';
+            return routes.entries + formId + divider + params
         },
         setPerPage : function( newPerPage ) {
             perPage = newPerPage;
@@ -80,9 +84,9 @@ function CFAPI( routes, perPage, formId, tokens,  $ ) {
                 data:{
                     per_page: perPage
                 }
-            }).success( function( r ){
+            }).done( function( r ){
                 return r.per_page;
-            }).error( function( r ){
+            }).fail( function( r ){
                 console.log(r);
             })
 
