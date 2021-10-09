@@ -1,59 +1,106 @@
 <?php
+
+/**
+ * The Theme My Login Plugin
+ *
+ * @package Theme_My_Login
+ */
+
 /*
 Plugin Name: Theme My Login
-Plugin URI: http://www.jfarthing.com/extend/wordpress-plugins/theme-my-login/
-Description: Themes the WordPress login, registration and forgot password pages according to your theme.
-Version: 6.4.10
-Author: Jeff Farthing
-Author URI: http://www.jfarthing.com
+Plugin URI: https://thememylogin.com
+Description: Creates an alternate login, registration and password recovery experience within your theme.
+Version: 7.1.3
+Author: Theme My Login
+Author URI: https://thememylogin.com
+License: GPLv2
+License URI: https://www.gnu.org/licenses/gpl-2.0.html
 Text Domain: theme-my-login
-Domain Path: /languages
+Network: true
 */
 
-// Allow custom functions file
-if ( file_exists( WP_PLUGIN_DIR . '/theme-my-login-custom.php' ) )
-	include_once( WP_PLUGIN_DIR . '/theme-my-login-custom.php' );
+/**
+ * Stores the version of TML.
+ *
+ * @since 7.0
+ */
+define( 'THEME_MY_LOGIN_VERSION', '7.1.3' );
 
-if ( ! defined( 'THEME_MY_LOGIN_PATH' ) ) {
-	define( 'THEME_MY_LOGIN_PATH', dirname( __FILE__ ) );
-}
+/**
+ * Stores the path to TML.
+ *
+ * @since 6.4.4
+ */
+define( 'THEME_MY_LOGIN_PATH', plugin_dir_path( __FILE__ ) );
 
-// Require a few needed files
-require_once( THEME_MY_LOGIN_PATH . '/includes/class-theme-my-login-common.php' );
-require_once( THEME_MY_LOGIN_PATH . '/includes/class-theme-my-login-abstract.php' );
-require_once( THEME_MY_LOGIN_PATH . '/includes/class-theme-my-login.php' );
-require_once( THEME_MY_LOGIN_PATH . '/includes/class-theme-my-login-template.php' );
-require_once( THEME_MY_LOGIN_PATH . '/includes/class-theme-my-login-widget.php' );
+/**
+ * Stores the URL to TML.
+ *
+ * @since 7.0
+ */
+define( 'THEME_MY_LOGIN_URL',  plugin_dir_url( __FILE__ ) );
 
-// Instantiate Theme_My_Login singleton
-Theme_My_Login::get_object();
+/**
+ * Stores the URL to TML's extensions directory.
+ *
+ * @since 7.0
+ */
+define( 'THEME_MY_LOGIN_EXTENSIONS_URL', 'https://thememylogin.com/extensions' );
 
-if ( is_admin() ) {
-	require_once( THEME_MY_LOGIN_PATH . '/admin/class-theme-my-login-admin.php' );
+/**
+ * Stores the URL to TML's extensions API.
+ *
+ * @since 7.0
+ */
+define( 'THEME_MY_LOGIN_EXTENSIONS_API_URL', 'https://thememylogin.com/edd-api/products' );
 
-	// Instantiate Theme_My_Login_Admin singleton
-	Theme_My_Login_Admin::get_object();
-}
+/**
+ * Require files.
+ */
+require THEME_MY_LOGIN_PATH . 'includes/class-theme-my-login.php';
+require THEME_MY_LOGIN_PATH . 'includes/class-theme-my-login-action.php';
+require THEME_MY_LOGIN_PATH . 'includes/class-theme-my-login-form.php';
+require THEME_MY_LOGIN_PATH . 'includes/class-theme-my-login-form-field.php';
+require THEME_MY_LOGIN_PATH . 'includes/class-theme-my-login-extension.php';
+require THEME_MY_LOGIN_PATH . 'includes/class-theme-my-login-widget.php';
+require THEME_MY_LOGIN_PATH . 'includes/actions.php';
+require THEME_MY_LOGIN_PATH . 'includes/forms.php';
+require THEME_MY_LOGIN_PATH . 'includes/extensions.php';
+require THEME_MY_LOGIN_PATH . 'includes/compat.php';
+require THEME_MY_LOGIN_PATH . 'includes/functions.php';
+require THEME_MY_LOGIN_PATH . 'includes/options.php';
+require THEME_MY_LOGIN_PATH . 'includes/shortcodes.php';
+require THEME_MY_LOGIN_PATH . 'includes/hooks.php';
 
 if ( is_multisite() ) {
-	require_once( THEME_MY_LOGIN_PATH . '/includes/class-theme-my-login-ms-signup.php' );
-
-	// Instantiate Theme_My_Login_MS_Signup singleton
-	Theme_My_Login_MS_Signup::get_object();
+	require THEME_MY_LOGIN_PATH . 'includes/ms-functions.php';
+	require THEME_MY_LOGIN_PATH . 'includes/ms-hooks.php';
 }
 
-if ( ! function_exists( 'theme_my_login' ) ) :
+if ( defined( 'WP_CLI' ) && WP_CLI ) {
+	require THEME_MY_LOGIN_PATH . 'includes/commands.php';
+}
+
 /**
- * Displays a TML instance
- *
- * @see Theme_My_Login::shortcode() for $args parameters
- * @since 6.0
- *
- * @param string|array $args Template tag arguments
+ * Load custom functions file.
  */
-function theme_my_login( $args = '' ) {
-	echo Theme_My_Login::get_object()->shortcode( wp_parse_args( $args ) );
+if ( file_exists( WP_PLUGIN_DIR . '/theme-my-login-custom.php' ) ) {
+	include WP_PLUGIN_DIR . '/theme-my-login-custom.php';
 }
-endif;
 
-?>
+// Prepare for something amazing!
+theme_my_login();
+
+/**
+ * Require admin files.
+ */
+if ( is_admin() ) {
+	require THEME_MY_LOGIN_PATH . 'admin/class-theme-my-login-admin.php';
+	require THEME_MY_LOGIN_PATH . 'admin/functions.php';
+	require THEME_MY_LOGIN_PATH . 'admin/settings.php';
+	require THEME_MY_LOGIN_PATH . 'admin/extensions.php';
+	require THEME_MY_LOGIN_PATH . 'admin/hooks.php';
+
+	// Prepare for something somewhat amazing!
+	theme_my_login_admin();
+}

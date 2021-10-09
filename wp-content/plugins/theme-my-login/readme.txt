@@ -1,61 +1,279 @@
 === Theme My Login ===
-Contributors: jfarthing84
-Donate link: https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=EZLVANPT4A9SW
-Tags: widget, login, registration, theme, custom, log in, register, sidebar, gravatar, redirection, e-mail
-Requires at least: 4.5
-Tested up to: 4.9.1
-Stable tag: 6.4.10
+Contributors: thememylogin, jfarthing84
+Tags: login, register, password, branding, customize, widget, wp-login, wp-login.php
+Requires at least: 5.4
+Tested up to: 5.7
+Stable tag: trunk
 
-Themes the WordPress login pages according to your theme.
+The ultimate login branding solution! Theme My Login offers matchless customization of your WordPress user experience!
 
 
 == Description ==
 
-This plugin themes the WordPress login, registration and forgot password pages according to your current theme.
-It creates a page to use in place of wp-login.php, using a page template from your theme.
-Also includes a widget for sidebar login.
+Ever wished that your WordPress login page matched the rest of your site? Your wish has come true! Theme My Login allows you to bypass the default WordPress-branded login page that looks nothing like the rest of your site. Instead, your users will be presented with the login, registration and password recovery pages right within your theme. The best part? It works right out of the box, with no configuration necessary! Take back your login page, WordPress users!
 
 
 = Features =
-* Your registration, log in, and password recovery pages will all match the rest of your website
-* Includes a customizable widget to login anywhere from your blog
-* Redirect users upon log in and log out based upon their role
-* Show gravatar to users who are logged in
-* Assign custom links to users who are logged in based on their role
-* Customize user emails for registration and/or password recovery
-* Send user emails in HTML format
-* Allow users to set their own password upon registration
-* Require users to be approved or confirm e-mail address upon registration
-* Theme user profiles
 
+* Have you users log in from the frontend of your site.
+* Have your users register from the frontend of your site.
+* Have your users recover their password from the frontend of your site.
+* Customize the slugs used for login, registration, password recovery and other pages.
+* Allow your users to register with only their email.
+* Allow your users to set their own passwords upon registration.
+* Allow your users to log in using either their email and password, username and password or a combination of the two.
+* Allow your users to be logged in automatically after registration with auto-login.
+
+
+= Do More With Extensions =
+
+Boost your user experience even more with add-on plugins from our [extensions catalog](https://thememylogin.com/extensions). Some of our extensions include:
+
+* [Redirection](https://thememylogin.com/extensions/redirection) allows you to redirect your users on login, logout and registration based on their role.
+* [Restrictions](https://thememylogin.com/extensions/restrictions) allows you to restrict posts/pages, widgets and nav menu items based on a users login status and/or role.
+* [Profiles](https://thememylogin.com/extensions/profiles) lets your users edit their profile from the frontend of your site.
+* [Moderation](https://thememylogin.com/extensions/moderation) allows you to moderate your users by requiring them to confirm their email or by requiring admin approval.
+* [reCAPTCHA](https://thememylogin.com/extensions/recaptcha) enables Google reCAPTCHA support for your registration and login forms.
+* [Social](https://thememylogin.com/extensions/social) allows you to allow your users to log in to your site using their favorite social providers.
 
 == Installation ==
 
-1. Upload the plugin to your 'wp-content/plugins' directory
-1. Activate the plugin
+1. Upload the plugin files to the `/wp-content/plugins/theme-my-login` directory, or install the plugin through the WordPress plugins screen directly.
+1. Activate the plugin through the 'Plugins' screen in WordPress
 
 
 == Frequently Asked Questions ==
 
-= How do I change the look of forms? =
+= Where can I find documentation? =
 
-The same way you would change the look of anything else on your site: CSS. Theme My Login uses it's own very basic stylesheet.
-You can copy this to your theme's directory and add additional styling there or simply add additional styling to your theme's stylesheet.
+Documentation can be found on our [documentation site](https://docs.thememylogin.com).
 
-= I can't get into my site! What do I do? =
+= Where can I find support? =
 
-Visit yoursite.com/wp-login.php.
+Support can be found using our [support form](https://thememylogin.com/support).
 
-= What happened to the language folder? =
+= Where can I report a bug? =
 
-As of version 6.3, Theme My Login no longer ships with translation files. Translations will be available at http://translate.wordpress.org.
-
-= How do I obtain additional assistance? =
-
-Please visit https://wordpress.org/support/plugin/theme-my-login.
+Report bugs, suggest ideas and participate in development at [GitHub](https://github.com/theme-my-login/theme-my-login/).
 
 
 == Changelog ==
+
+= 7.1.3 =
+* Fix PHP 8 notices
+* Fix wp_sensitive_page_meta() deprecated notice in WP 5.7+
+* Update password reset button text for WP 5.7+
+* Add `lostpassword_user_data` filter
+
+= 7.1.2 =
+* Fix site crashing on Bluehost
+* Add requester IP address to password reset emails
+* Fix multisite settings for WP 5.5+
+* Default AJAX requests to off
+* Bring wp-login.php duplicated code up to date
+
+= 7.1.1 =
+* Implement option to enable/disable AJAX
+* Fix AJAX not working on certain server environments
+* Fix AJAX errors not displaying when the AJAX request fails
+* Revert forcing actions to the Dashboard when logged in
+
+= 7.1 =
+* Implement AJAX support
+* Introduce new Dashboard action
+* Improve performance by reducing queries
+* Require WordPress 5.4
+* Remove angle brackets from password reset link in notification
+* Add sensitive page meta tags to TML actions
+* Add missing `lost_password` action hook
+* Fix lostpassword link being rewritten on wp-login.php
+
+= 7.0.15 =
+* Fix extension update issues caused by caching
+* Add `tml_script_dependencies` filter
+* Add `tml_script_data` filter
+
+= 7.0.14 =
+* Fix login page error on on WP 5.2+
+* Implement caching for remote extension data to speed up plugins screen
+* Implement a CLI command for adding TML actions as nav menu items
+* Ensure password recovery error messages match core
+* Fix notice if a settings field isn't passed with an `args` parameter
+* Fix permalinks being flushed on all TML admin pages
+* Allow form attributes to be set in the form constructor
+* Add `tml_activate_extension` action hook
+* Add `tml_deactivate_extension` action hook
+
+= 7.0.13 =
+* Ensure proper retrieval of request parameters in all server configuration scenarios
+* Ensure scripts and styles are loaded in the proper order on TML actions
+* Ensure TML scripts are loaded in the footer
+* Ensure password errors are only displayed where appropriate
+* Ensure all strings not found in frontend core translation are translatable
+* Implement callable usage of custom form field content
+* Implement methods for manipulation of form field classes
+* Add `tml_render_form` action hook
+* Add `tml_render_form_field` action hook
+* Add `tml_before_form` filter
+* Add `tml_after_form` filter
+* Add `tml_before_form_field` filter
+* Add `tml_after_form_field` filter
+* Add `tml_get_form_field_content` filter
+
+= 7.0.12 =
+* Ensure that styles are more likely to be applied
+* Ensure checkbox labels are inline
+* Ensure password errors are only applied on register action
+* Pass page slug for rewrites if a matching page exists
+* Ensure query args are encoded when rewriting URLs
+* Ensure query args are passed for actions redirected from login
+* Add license activation notice to extension update messages
+* Add action links to plugins screen
+* Ensure PHP 5.2 support for development
+* Ensure hierarchical slugs work properly
+
+= 7.0.11 =
+* Ensure that actions use their own page
+* Ensure the lostpassword action uses a TML link
+* Fix undefined variable notice when recovering password
+* Fix password strength meter script loading on every request
+* Only show TML notices on the Dashboard or TML pages
+* Fix undefined variable notices when handling an action
+* Fix stomping of other plugins actions
+
+= 7.0.10 =
+* Fix admin notices displaying for non-privileged users
+* Reinstate default testcookie method
+* Don't allow TML actions to stomp on other content
+* Don't allow TML actions to stomp on other TML actions
+* Allow non-TML actions to be handled
+* Include labels for custom fields if present
+* Hide comments on TML pages
+* Fix generation of non-pretty action links
+* Apply `login_redirect` filter to auto-login registration redirect
+* Fix new user notification being sent when unchecked upon creating a user
+
+= 7.0.9 =
+* Fix fatal error on PHP versions less than 5.5
+* Apply `tml_get_action_tile` filter at the object level
+* Apply `tml_get_action_slug` filter at the object level
+* Apply `tml_get_action_url` filter at the object level
+
+= 7.0.8 =
+* Fix slow-loading extensions page
+* Add dismissible notice of latest available extension
+* Fix "stuck" license status by verifying when visiting the licenses page
+* Ensure a form field object is returned when adding a form field
+* Fix testcookie step causing a 403 error
+* Fix links not being changed in emails sent from the Dashboard
+
+= 7.0.7 =
+* Fix sorting of form fields
+* Fix "Remember Me" not being clickable
+* Add "checked" property to form fields to allow for easy checking of checkboxes
+* Add plugin textdomain to strings not found in front-end core translations
+* Add `tml_send_new_user_notification` filter
+* Add `tml_send_new_user_admin_notification` filter
+* Add `tml_retrieve_password_email` filter
+
+= 7.0.6 =
+* Fix a fatal error when removing form fields
+* Fix a 408/502 error when hosted with Namecheap
+* Fix notices in widget when upgrading from 6.4.x
+* Add default contextual help for extensions
+* Move `after` argument for forms to after the container
+
+= 7.0.5 =
+* Allow custom actions to have custom slugs
+* Show the URL below each slug setting field
+* Add contextual help to plugin pages
+* Implement a "user panel" within the login widget
+* Add a filter to disable showing of the widget: `tml_show_widget`
+* Add a filter to change the avatar size in the "user_panel": `tml_widget_avatar_size`
+* Add a filter to change the links in the "user panel": `tml_widget_user_links`
+
+= 7.0.4 =
+* Fix a notice that appears when unregistering an action
+* Don't fire form actions until the form is being rendered
+* Set a secure cookie for sites using SSL
+* Add `login_init` and `login_form_{$action}` action hooks
+* Add `login_head` and `login_enqueue_scripts` action hooks
+* Add `register_form`, `lostpassword_form`, and `resetpass_form` action hooks
+* Add `signup_hidden_fields`, `signup_extra_fields`, and `signup_blogform` action hooks
+
+= 7.0.3 =
+* Fix an error on PHP versions less than 5.3
+* Allow for description in settings API functions
+* Fix compatibility with legacy shortcode
+* Rewrite certain admin login links
+* Remove undesired actions and filters from TML pages
+* Introduce new `tml_action_{$action}` hook and use it for handlers
+
+= 7.0.2 =
+* Fix collision with some plugins which modify the nav menu edit walker
+* Fix a notice in multisite
+* Fix pages not using custom templates when used as TML actions
+* Fix shortcode not working in certain circumstances when no action is present
+
+= 7.0.1 =
+* Fix error where WP_Query is used before expected by other plugins
+* Fix existing shortcodes from pre-7 not working due to missing action
+* Fix compatibility with plugins that use some legacy methods on the plugin class
+* Fix registration redirection when auto-login is enabled
+* Allow actions to be represented by pages if their slugs match
+* Fix legacy page menu items no longer behaving as they did pre-7
+
+= 7.0 =
+* Rewrite plugin from the ground up
+* Pages are no longer used to represent actions
+* Actions are now represented by a class
+* Actions can be added/remove on the fly
+* Forms are now represented by a class
+* Forms can be added/remove on the fly
+* Form fields can be added/removed/modified/rearranged on the fly
+* Extensions can easily be written and integrated with the plugin
+* Move Custom E-mail module to a commercial extension
+* Merge Custom Passwords module into core plugin
+* Move Custom Redirection module to a commercial extension
+* Remove Custom User Links module
+* Move reCAPTCHA module to a commercial extension
+* Move Security module to a commercial extension
+* Move Themed Profiles module to a commercial extension
+* Move User Moderation module to a commercial extension
+* Add option to allow auto-login after registration
+
+= 6.4.17 =
+* Fix the version check logic in the updater
+* Implement path to download 6.4.x releases only
+
+= 6.4.16 =
+* Require opt-in to update the plugin to 7
+
+= 6.4.15 =
+* Fix a bug where pages were being excluded from legacy page menus and search
+* Add a notice about the impending release of 7
+
+= 6.4.14 =
+* Fix the "cookies blocked" notice that appeared upon entering invalid login credentials
+* Style alert link colors to match the alert that they're in
+* Tweak styling of the "Remember me" checkbox and label
+
+= 6.4.13 =
+* Implement a TML action selector for pages
+* Fix error about cookies not being enabled when they are
+
+= 6.4.12 =
+* Add support for data requests
+* Utilize Bootstrap 3 colors for notices
+
+= 6.4.11 =
+* Fix fatal error when attempting to rewrite login links before `init` action
+* Add the test cookie functionality from wp-login.php
+* Fix a notice in the postpass action handler
+* Make User Moderation login type aware
+* Fix display of password length requirements
+* Fix a multisite error when the main site is not ID 1
+* Don't allow squashing of the main instance by shortcode attribute
 
 = 6.4.10 =
 * Add weak password confirmation checkbox to password reset form
@@ -388,7 +606,7 @@ Please visit https://wordpress.org/support/plugin/theme-my-login.
 = 4.3.2 =
 * Added the option to redirect unapproved and/or denied users to a custom URL upon login attempt
 * Fixed a bug where custom user password is lost if user moderation is enabled
-* Fixed a PHP notice in the admin (Wish more plugin authors would do this; WP_DEBUG is your friend!)
+* Fixed a PHP notice in the admin
 
 = 4.3.1 =
 * Fixed a MAJOR security hole that allowed anyone to login without a password!!
@@ -428,7 +646,6 @@ Please visit https://wordpress.org/support/plugin/theme-my-login.
 * Implemented custom links for logged in users based on role
 * Implemented custom redirection upon log in based on role
 * Implemented custom registration/password recovery emails
-
 * Implemented true shortcode and template tag functionality
 * Implemented true multi-instance functionality
 * Implemented an easy-to-use jQuery tabbed administration menu
@@ -546,3 +763,12 @@ Please visit https://wordpress.org/support/plugin/theme-my-login.
 
 = 1.0.0 =
 * Initial release version
+
+
+== Upgrade Notice ==
+
+= 7.1 =
+Theme My Login now requires WordPress 5.4+, and by extension, PHP 5.6.20+.
+
+= 7.0 =
+Modules are no longer included with the plugin. Please consider this before you upgrade!
