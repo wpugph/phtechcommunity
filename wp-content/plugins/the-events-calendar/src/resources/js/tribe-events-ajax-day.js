@@ -16,7 +16,7 @@
 	 * dbug = tribe_debug
 	 */
 
-	$( document ).ready( function() {
+	$( function() {
 
 		var $nav_link = $( '[class^="tribe-events-nav-"] a' );
 		var base_url = '/';
@@ -45,7 +45,9 @@
 		function tribe_day_add_classes() {
 			if ( $( '.tribe-events-day-time-slot' ).length ) {
 				$( '.tribe-events-day-time-slot' ).find( '.vevent:last' ).addClass( 'tribe-events-last' );
-				$( '.tribe-events-day-time-slot:first' ).find( '.vevent:first' ).removeClass( 'tribe-events-first' );
+				$( '.tribe-events-day-time-slot:first' )
+					.find( '.vevent:first' )
+					.removeClass( 'tribe-events-first' );
 			}
 		}
 
@@ -67,10 +69,15 @@
 				params = params + '&featured=1';
 			}
 
-			history.replaceState( {
-				"tribe_params"    : params,
-				"tribe_url_params": td.params
-			}, '', location.href );
+			var isShortcode = $( document.getElementById( 'tribe-events' ) )
+				.is( '.tribe-events-shortcode' );
+
+			if( ! isShortcode || false !== config.update_urls.shortcode.day ){
+				history.replaceState( {
+					"tribe_params"    : params,
+					"tribe_url_params": td.params
+				}, '', location.href );
+			}
 
 			$( window ).on( 'popstate', function( event ) {
 
@@ -90,7 +97,7 @@
 			} );
 		}
 
-		$( '#tribe-events' ).on( 'click', '.tribe-events-nav-previous a, .tribe-events-nav-next a', function( e ) {
+		$( '#tribe-events' ).on( 'click', '.tribe-events-nav-previous a, .tribe-events-nav-next a', function( e ) { // eslint-disable-line max-len
 			e.preventDefault();
 			if ( ts.ajax_running || ts.updating_picker ) {
 				return;
@@ -104,27 +111,26 @@
 			else {
 				td.cur_url = $this.attr( "href" );
 			}
-			if ( ts.datepicker_format !== '0' ) {
-				tf.update_picker( tribeDateFormat( ts.date, td.datepicker_formats.main[ts.datepicker_format] ) );
-			}
-			else {
-				tf.update_picker( ts.date );
-			}
+
+			tf.update_picker( ts.date );
+
 			tf.pre_ajax( function() {
 				tribe_events_day_ajax_post();
 			} );
 		} );
 
-		tf.snap( '#tribe-events-bar', '#tribe-events', '#tribe-events-footer .tribe-events-nav-previous a, #tribe-events-footer .tribe-events-nav-next a' );
+		tf.snap( '#tribe-events-bar', '#tribe-events', '#tribe-events-footer .tribe-events-nav-previous a, #tribe-events-footer .tribe-events-nav-next a' ); // eslint-disable-line max-len
 
+		/* eslint-disable max-len */
 		/**
 		 * @function tribe_events_bar_dayajax_actions
 		 * @desc On events bar submit, this function collects the current state of the bar and sends it to the day view ajax handler.
 		 * @param {event} e The event object.
 		 */
+		/* eslint-enable max-len */
 
 		function tribe_events_bar_dayajax_actions( e ) {
-			if ( tribe_events_bar_action != 'change_view' ) {
+			if ( tribe_events_bar_action != 'change_view' ) { // eslint-disable-line eqeqeq
 				e.preventDefault();
 				if ( ts.ajax_running ) {
 					return;
@@ -133,11 +139,15 @@
 				ts.popping = false;
 				if ( picker.length ) {
 					ts.date = $( '#tribe-bar-date' ).val();
-					td.cur_url = ( td.default_permalinks ) ? base_url + '=' + td.cur_date : base_url + td.cur_date + '/';
+					td.cur_url = ( td.default_permalinks )
+						? base_url + '=' + td.cur_date
+						: base_url + td.cur_date + '/';
 				}
 				else {
 					ts.date = td.cur_date;
-					td.cur_url = ( td.default_permalinks ) ? base_url + '=' + td.cur_date : base_url + td.cur_date + '/';
+					td.cur_url = ( td.default_permalinks )
+						? base_url + '=' + td.cur_date
+						: base_url + td.cur_date + '/';
 				}
 				tf.pre_ajax( function() {
 					tribe_events_day_ajax_post();
@@ -152,15 +162,22 @@
 
 		if ( tt.no_bar() || tt.live_ajax() && tt.pushstate ) {
 
-			$( '#tribe-bar-date' ).on( 'changeDate', function( e ) {
+			$( '#tribe-bar-date' ).on( 'changeDate', function( e ) { // eslint-disable-line no-unused-vars
 				if( ts.updating_picker ){
 					return;
 				}
 
 				if ( !tt.reset_on() ) {
 					ts.popping = false;
+
+					let maskKey = ts.datepicker_format.toString();
+
 					if ( ts.datepicker_format !== '0' ) {
-						ts.date = tribeDateFormat( $( this ).bootstrapDatepicker( 'getDate' ), "tribeQuery" );
+						ts.date = tribeUtils.formatDateWithMoment(
+							$( this ).bootstrapDatepicker( 'getDate' ),
+							"tribeQuery",
+							maskKey
+						);
 					}
 					else {
 						ts.date = $( this ).val();
@@ -181,7 +198,9 @@
 
 		$( te ).on( 'tribe_ev_updatingRecurrence', function() {
 			if ( ts.filter_cats ) {
-				td.cur_url = ( td.default_permalinks ) ? base_url + '=' + td.cur_date : base_url + td.cur_date + '/';
+				td.cur_url = ( td.default_permalinks )
+					? base_url + '=' + td.cur_date
+					: base_url + td.cur_date + '/';
 			}
 			else {
 				td.cur_url = $( '#tribe-events-header' ).attr( "data-baseurl" );
@@ -189,6 +208,7 @@
 			ts.popping = false;
 		} );
 
+		/* eslint-disable max-len */
 		/**
 		 * @function tribe_events_day_ajax_post
 		 * @desc The ajax handler for day view.
@@ -196,6 +216,7 @@
 		 * As post begins 'tribe_ev_ajaxStart' and 'tribe_ev_dayView_AjaxStart' are fired, and then 'tribe_ev_ajaxSuccess' and 'tribe_ev_dayView_ajaxSuccess' are fired on success.
 		 * Various functions in the events plugins hook into these events. They are triggered on the tribe_ev.events object.
 		 */
+		/* eslint-enable max-len */
 
 		function tribe_events_day_ajax_post() {
 
@@ -221,7 +242,7 @@
 				};
 
 				// add shortcode display value
-				if ( ! ts.url_params.hasOwnProperty( 'tribe_event_display' ) ) {
+				if ( ! ts.url_params.hasOwnProperty( 'tribe_event_display' ) ) { // eslint-disable-line no-prototype-builtins,max-len
 					ts.url_params['tribe_event_display'] = ts.view;
 				}
 
@@ -230,13 +251,13 @@
 				}
 
 				if ( td.default_permalinks ) {
-					if( !ts.url_params.hasOwnProperty( 'eventDate' ) ){
+					if( !ts.url_params.hasOwnProperty( 'eventDate' ) ){ // eslint-disable-line no-prototype-builtins,max-len
 						ts.url_params['eventDate'] = ts.date;
 					}
-					if( !ts.url_params.hasOwnProperty( 'post_type' ) ){
+					if( !ts.url_params.hasOwnProperty( 'post_type' ) ){ // eslint-disable-line no-prototype-builtins,max-len
 						ts.url_params['post_type'] = config.events_post_type;
 					}
-					if( !ts.url_params.hasOwnProperty( 'eventDisplay' ) ){
+					if( !ts.url_params.hasOwnProperty( 'eventDisplay' ) ){ // eslint-disable-line no-prototype-builtins,max-len
 						ts.url_params['eventDisplay'] = ts.view;
 					}
 				}
@@ -260,7 +281,7 @@
 			if ( tt.pushstate && !ts.filter_cats ) {
 
 				// @ifdef DEBUG
-				dbug && debug.time( 'Day View Ajax Timer' );
+				dbug && tec_debug.time( 'Day View Ajax Timer' );
 				// @endif
 
 				$( te ).trigger( 'tribe_ev_ajaxStart' ).trigger( 'tribe_ev_dayView_AjaxStart' );
@@ -297,7 +318,9 @@
 							$( '.tribe-events-promo' ).next( '.tribe-events-promo' ).remove();
 
 							ts.page_title = $( '#tribe-events-header' ).data( 'title' );
+							ts.view_title = $( '#tribe-events-header' ).data( 'viewtitle' );
 							document.title = ts.page_title;
+							$( '.tribe-events-page-title' ).html(ts.view_title);
 
 							// @TODO: We need to D.R.Y. this assignment and the following if statement about shortcodes/do_string
 							// Ensure that the base URL is, in fact, the URL we want
@@ -315,14 +338,19 @@
 								td.cur_url = td.cur_url + '?' + ts.url_params;
 							}
 
-							if ( ts.do_string ) {
+							var isShortcode = $( document.getElementById( 'tribe-events' ) )
+								.is( '.tribe-events-shortcode' );
+							var shouldUpdateHistory = ! isShortcode || false !== config.update_urls.shortcode.day;
+
+
+							if ( ts.do_string && shouldUpdateHistory ) {
 								history.pushState( {
 									"tribe_date"  : ts.date,
 									"tribe_params": ts.params
 								}, ts.page_title, td.cur_url );
 							}
 
-							if ( ts.pushstate ) {
+							if ( ts.pushstate && shouldUpdateHistory ) {
 								history.pushState( {
 									"tribe_date"  : ts.date,
 									"tribe_params": ts.params
@@ -335,7 +363,7 @@
 							$( te ).trigger( 'ajax-success.tribe' ).trigger( 'tribe_ev_dayView_AjaxSuccess' );
 
 							// @ifdef DEBUG
-							dbug && debug.timeEnd( 'Day View Ajax Timer' );
+							dbug && tec_debug.timeEnd( 'Day View Ajax Timer' );
 							// @endif
 
 						}
@@ -354,10 +382,10 @@
 		}
 
 		// @ifdef DEBUG
-		dbug && debug.info( 'TEC Debug: tribe-events-ajax-day.js successfully loaded' );
-		ts.view && dbug && debug.timeEnd( 'Tribe JS Init Timer' );
+		dbug && tec_debug.info( 'TEC Debug: tribe-events-ajax-day.js successfully loaded' );
+		ts.view && dbug && tec_debug.timeEnd( 'Tribe JS Init Timer' );
 		// @endif
 
 	} );
 
-})( window, document, jQuery, tribe_ev.data, tribe_ev.events, tribe_ev.fn, tribe_ev.state, tribe_ev.tests, tribe_js_config, tribe_debug );
+})( window, document, jQuery, tribe_ev.data, tribe_ev.events, tribe_ev.fn, tribe_ev.state, tribe_ev.tests, tribe_js_config, tribe_debug ); // eslint-disable-line max-len

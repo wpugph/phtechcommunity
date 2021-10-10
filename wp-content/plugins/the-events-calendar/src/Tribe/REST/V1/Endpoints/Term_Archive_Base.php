@@ -11,7 +11,7 @@ abstract class Tribe__Events__REST__V1__Endpoints__Term_Archive_Base
 	/**
 	 * @var array An array mapping the REST request supported query vars to the args used in a WP_REST_Terms_Controller query.
 	 */
-	protected $supported_query_vars = array(
+	protected $supported_query_vars = [
 		'page'       => 'page',
 		'per_page'   => 'per_page',
 		'search'     => 'search',
@@ -24,7 +24,7 @@ abstract class Tribe__Events__REST__V1__Endpoints__Term_Archive_Base
 		'post'       => 'post',
 		'event'      => 'post',
 		'slug'       => 'slug',
-	);
+	];
 
 	public function __construct(
 		Tribe__REST__Messages_Interface $messages,
@@ -44,7 +44,7 @@ abstract class Tribe__Events__REST__V1__Endpoints__Term_Archive_Base
 	 * @return WP_Error|WP_REST_Response An array containing the data on success or a WP_Error instance on failure.
 	 */
 	public function get( WP_REST_Request $request ) {
-		$request_params = array();
+		$request_params = [];
 
 		foreach ( $this->supported_query_vars as $origin => $destination ) {
 			$request_params[ $destination ] = $request[ $origin ];
@@ -64,24 +64,18 @@ abstract class Tribe__Events__REST__V1__Endpoints__Term_Archive_Base
 
 		$terms_data = $terms_response->get_data();
 
-		if ( empty( $terms_data ) ) {
-			$message = $this->messages->get_message( 'term-archive-page-not-found' );
-
-			return new WP_Error( 'term-archive-page-not-found', $message, array( 'status' => 404 ) );
-		}
-
 		$prepared = $this->repository->prepare_terms_data( $terms_data, $this->get_taxonomy() );
 
 		$response = new WP_REST_Response();
 
 		$terms_response_headers = $terms_response->get_headers();
 
-		$data = array(
+		$data = [
 			'rest_url'            => $this->get_base_rest_url(),
 			'total'               => $terms_response_headers['X-WP-Total'],
 			'total_pages'         => $terms_response_headers['X-WP-TotalPages'],
 			$this->get_data_key() => $prepared,
-		);
+		];
 
 		$current_page = isset( $params['page'] ) ? $params['page'] : 1;
 		$has_next     = $current_page < $data['total_pages'];

@@ -45,8 +45,8 @@ class Tribe__Events__Admin__Timezone_Updater {
 	 * an ajax loop for further processing where needed.
 	 */
 	protected function notice_setup() {
-		add_action( 'admin_notices', array( $this, 'notice_display' ) );
-		add_action( 'admin_enqueue_scripts', array( $this, 'notice_assets' ) );
+		add_action( 'admin_notices', [ $this, 'notice_display' ] );
+		add_action( 'admin_enqueue_scripts', [ $this, 'notice_assets' ] );
 	}
 
 	/**
@@ -74,8 +74,8 @@ class Tribe__Events__Admin__Timezone_Updater {
 			: 100;
 
 		$update = $remaining
-			? __( 'Please wait while timezone data is added to your events.', 'the-events-calendar' )
-			: __( 'Update complete: timezone data has been added to all events in the database.', 'the-events-calendar' );
+			? __( 'Please wait while time zone data is added to your events.', 'the-events-calendar' )
+			: __( 'Update complete: time zone data has been added to all events in the database.', 'the-events-calendar' );
 
 		$update = "<p> $update </p>";
 
@@ -99,12 +99,12 @@ class Tribe__Events__Admin__Timezone_Updater {
 		$script = trailingslashit( $plugin->plugin_url ) . 'src/resources/js/events-admin-timezone-updater.js';
 		$handle = 'tribe-events-ajax-timezone-update';
 
-		wp_enqueue_script( $handle, $script, array( 'jquery' ), false, true );
-		wp_localize_script( $handle, 'tribe_timezone_update', array(
-			'continue' => $this->update_needed(),
-			'failure_msg' => __( 'A problem stopped the timezone update process from completing. Please refresh and try again.', 'the-events-calendar' ),
-			'check' => wp_create_nonce( 'timezone-settings' ),
-		) );
+		wp_enqueue_script( $handle, $script, [ 'jquery' ], false, true );
+		wp_localize_script( $handle, 'tribe_timezone_update', [
+			'continue'    => $this->update_needed(),
+			'failure_msg' => __( 'A problem stopped the time zone update process from completing. Please refresh and try again.', 'the-events-calendar' ),
+			'check'       => wp_create_nonce( 'timezone-settings' ),
+		] );
 	}
 
 	/**

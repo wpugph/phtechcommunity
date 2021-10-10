@@ -1,13 +1,13 @@
 <?php
 $tab                = $this->tabs->get_active();
 $origin_slug        = 'url';
-$field              = (object) array();
+$field = (object) [];
 $field->label       = __( 'Import Type:', 'the-events-calendar' );
 $field->placeholder = __( 'Select Import Type', 'the-events-calendar' );
 $field->help        = __( 'One-time imports include currently listed upcoming events, while scheduled imports automatically grab new events and updates from this url on a set schedule.', 'the-events-calendar' );
 $field->source      = 'url_import_type';
 
-$frequency              = (object) array();
+$frequency              = (object) [];
 $frequency->placeholder = __( 'Select Frequency', 'the-events-calendar' );
 $frequency->help        = __( 'Select how often you would like events to be automatically imported.', 'the-events-calendar' );
 $frequency->source      = 'url_import_frequency';
@@ -32,27 +32,33 @@ $frequencies = $cron->get_frequency();
 				data-hide-search
 				data-prevent-clear
 			>
-				<option value=""></option>
 				<option value="manual"><?php echo esc_html__( 'One-Time Import', 'the-events-calendar' ); ?></option>
 				<option value="schedule"><?php echo esc_html__( 'Scheduled Import', 'the-events-calendar' ); ?></option>
 			</select>
 		<?php endif; ?>
 
-		<select
-			name="aggregator[url][import_frequency]"
-			id="tribe-ea-field-url_import_frequency"
-			class="tribe-ea-field tribe-ea-dropdown tribe-ea-size-large tribe-dependent"
-			placeholder="<?php echo esc_attr( $frequency->placeholder ); ?>"
-			data-hide-search
+		<span
 			data-depends="#tribe-ea-field-url_import_type"
 			data-condition="schedule"
-			data-prevent-clear
 		>
-			<option value=""></option>
-			<?php foreach ( $frequencies as $frequency_object ) : ?>
-				<option value="<?php echo esc_attr( $frequency_object->id ); ?>" <?php selected( empty( $record->meta['frequency'] ) ? 'daily' : $record->meta['frequency'], $frequency_object->id ); ?>><?php echo esc_html( $frequency_object->text ); ?></option>
-			<?php endforeach; ?>
-		</select>
+			<select
+				name="aggregator[url][import_frequency]"
+				id="tribe-ea-field-url_import_frequency"
+				class="tribe-ea-field tribe-ea-dropdown tribe-ea-size-large tribe-dependent"
+				placeholder="<?php echo esc_attr( $frequency->placeholder ); ?>"
+				data-hide-search
+				data-prevent-clear
+			>
+				<?php foreach ( $frequencies as $frequency_object ) : ?>
+					<option value="<?php echo esc_attr( $frequency_object->id ); ?>" <?php selected( empty( $record->meta['frequency'] ) ? 'daily' : $record->meta['frequency'], $frequency_object->id ); ?>><?php echo esc_html( $frequency_object->text ); ?></option>
+				<?php endforeach; ?>
+			</select>
+			<span
+				class="tribe-bumpdown-trigger tribe-bumpdown-permanent tribe-bumpdown-nohover tribe-ea-help dashicons dashicons-editor-help tribe-dependent"
+				data-bumpdown="<?php echo esc_attr( $frequency->help ); ?>"
+				data-width-rule="all-triggers"
+			></span>
+		</span>
 		<span
 			class="tribe-bumpdown-trigger tribe-bumpdown-permanent tribe-bumpdown-nohover tribe-ea-help dashicons dashicons-editor-help tribe-dependent"
 			data-bumpdown="<?php echo esc_attr( $field->help ); ?>"
@@ -61,24 +67,24 @@ $frequencies = $cron->get_frequency();
 			data-condition-empty
 			data-width-rule="all-triggers"
 		></span>
-		<span
-			class="tribe-bumpdown-trigger tribe-bumpdown-permanent tribe-bumpdown-nohover tribe-ea-help dashicons dashicons-editor-help tribe-dependent"
-			data-bumpdown="<?php echo esc_attr( $frequency->help ); ?>"
-			data-depends="#tribe-ea-field-url_import_type"
-			data-condition="schedule"
-			data-width-rule="all-triggers"
-		></span>
 	</td>
 </tr>
 
 <?php
 if ( 'edit' === $tab->get_slug() ) {
-	$this->template( 'fields/schedule', array( 'record' => $record, 'origin' => $origin_slug, 'aggregator_action' => $aggregator_action ) );
+	$this->template(
+		'fields/schedule',
+		[
+			'record'            => $record,
+			'origin'            => $origin_slug,
+			'aggregator_action' => $aggregator_action,
+		]
+	);
 }
 ?>
 
 <?php
-$field              = (object) array();
+$field              = (object) [];
 $field->label       = __( 'URL:', 'the-events-calendar' );
 $field->placeholder = __( 'example.com/', 'the-events-calendar' );
 $field->help        = __( 'Enter the url for the calendar, website, or event you would like to import. Event Aggregator will attempt to import events at that location.', 'the-events-calendar' );
@@ -86,7 +92,7 @@ $field->help        = __( 'Enter the url for the calendar, website, or event you
 $range_option = tribe_get_option( 'tribe_aggregator_default_url_import_range', 30 * DAY_IN_SECONDS );
 $range_strings = tribe( 'events-aggregator.settings' )->get_url_import_range_options( false );
 $range_string = $range_strings[ $range_option ];
-$range_message = esc_html( sprintf( __( 'Event Aggregator will try to fetch events starting in %s from the current date or the specified date;', 'the-events-calendar' ), $range_string ) );
+$range_message = esc_html( sprintf( __( 'Event Aggregator will try to fetch events starting within the next %s from the current date or the specified date;', 'the-events-calendar' ), $range_string ) );
 $link = esc_attr( admin_url( '/edit.php?post_type=tribe_events&page=tribe-common&tab=imports#tribe-field-tribe_aggregator_default_url_import_range' ) );
 $field->range_message = $range_message . ' ' . sprintf( '<a href="%s" target="_blank">%s</a> ', $link, esc_html__( 'you can modify this setting here.', 'the-events-calendar' ) );
 ?>
