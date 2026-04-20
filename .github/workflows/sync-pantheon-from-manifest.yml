@@ -176,21 +176,55 @@ jobs:
             fi
           done < /tmp/manifest_plugins.txt
 
+          # Get themes from manifest and current state
+          jq -r ".environments.$SOURCE_ENV.themes | to_entries[] | \"\(.key)|\(.value.version)\"" bin/manifest.json > /tmp/manifest_themes.txt || echo "" > /tmp/manifest_themes.txt
+          terminus wp "$SITE_NAME.dev" -- theme list --format=json 2>/dev/null | \
+            grep -v "^\[" | grep "^\[" | \
+            jq -r '.[] | "\(.name)|\(.version)"' > /tmp/current_themes.txt || echo "" > /tmp/current_themes.txt
+
+          # Compare themes
+          > /tmp/themes_to_install.txt
+          > /tmp/themes_to_update.txt
+
+          while IFS='|' read -r slug version; do
+            # Skip excluded themes
+            if echo "$EXCLUDED" | grep -qE "(^|\\|)${slug}(\\||$)"; then
+              continue
+            fi
+
+            current_line=$(grep "^${slug}|" /tmp/current_themes.txt || echo "")
+
+            if [ -z "$current_line" ]; then
+              # Theme not installed
+              echo "${slug}|${version}" >> /tmp/themes_to_install.txt
+            else
+              current_version=$(echo "$current_line" | cut -d'|' -f2)
+
+              if [ "$FORCE" = "true" ] || [ "$current_version" != "$version" ]; then
+                echo "${slug}|${version}|${current_version}" >> /tmp/themes_to_update.txt
+              fi
+            fi
+          done < /tmp/manifest_themes.txt
+
           # Count actions
           INSTALL_COUNT=$(wc -l < /tmp/plugins_to_install.txt | xargs)
           UPDATE_COUNT=$(wc -l < /tmp/plugins_to_update.txt | xargs)
           ACTIVATE_COUNT=$(wc -l < /tmp/plugins_to_activate.txt | xargs)
           DEACTIVATE_COUNT=$(wc -l < /tmp/plugins_to_deactivate.txt | xargs)
+          THEME_INSTALL_COUNT=$(wc -l < /tmp/themes_to_install.txt | xargs)
+          THEME_UPDATE_COUNT=$(wc -l < /tmp/themes_to_update.txt | xargs)
 
           echo "plugins_install_count=$INSTALL_COUNT" >> $GITHUB_OUTPUT
           echo "plugins_update_count=$UPDATE_COUNT" >> $GITHUB_OUTPUT
           echo "plugins_activate_count=$ACTIVATE_COUNT" >> $GITHUB_OUTPUT
           echo "plugins_deactivate_count=$DEACTIVATE_COUNT" >> $GITHUB_OUTPUT
+          echo "themes_install_count=$THEME_INSTALL_COUNT" >> $GITHUB_OUTPUT
+          echo "themes_update_count=$THEME_UPDATE_COUNT" >> $GITHUB_OUTPUT
 
           # Calculate total actions
           TOTAL_ACTIONS=0
           [ "$WP_CURRENT" != "$WP_TARGET" ] && TOTAL_ACTIONS=$((TOTAL_ACTIONS + 1))
-          TOTAL_ACTIONS=$((TOTAL_ACTIONS + INSTALL_COUNT + UPDATE_COUNT + ACTIVATE_COUNT + DEACTIVATE_COUNT))
+          TOTAL_ACTIONS=$((TOTAL_ACTIONS + INSTALL_COUNT + UPDATE_COUNT + ACTIVATE_COUNT + DEACTIVATE_COUNT + THEME_INSTALL_COUNT + THEME_UPDATE_COUNT))
 
           echo "total_actions=$TOTAL_ACTIONS" >> $GITHUB_OUTPUT
 
@@ -198,20 +232,78 @@ jobs:
           echo "**Source:** $SOURCE_ENV environment from manifest" >> $GITHUB_STEP_SUMMARY
           echo "**Mode:** $([ "$FORCE" = "true" ] && echo "Force reinstall (slow)" || echo "Smart sync (fast)")" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+
           echo "### WordPress Core" >> $GITHUB_STEP_SUMMARY
           if [ "$WP_CURRENT" != "$WP_TARGET" ]; then
-            echo "- 🔄 Update: $WP_CURRENT → $WP_TARGET" >> $GITHUB_STEP_SUMMARY
+            echo "- 🔄 **Version mismatch**: $WP_CURRENT → $WP_TARGET (will update)" >> $GITHUB_STEP_SUMMARY
           else
             echo "- ✅ Up to date: $WP_TARGET" >> $GITHUB_STEP_SUMMARY
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
+
           echo "### Plugins" >> $GITHUB_STEP_SUMMARY
           echo "- Install: $INSTALL_COUNT" >> $GITHUB_STEP_SUMMARY
-          echo "- Update: $UPDATE_COUNT" >> $GITHUB_STEP_SUMMARY
+          echo "- Update (version mismatch): $UPDATE_COUNT" >> $GITHUB_STEP_SUMMARY
           echo "- Activate: $ACTIVATE_COUNT" >> $GITHUB_STEP_SUMMARY
           echo "- Deactivate: $DEACTIVATE_COUNT" >> $GITHUB_STEP_SUMMARY
+
+          # Show detailed version mismatches for plugins
+          if [ "$UPDATE_COUNT" -gt 0 ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Plugin version mismatches (will be updated):**" >> $GITHUB_STEP_SUMMARY
+            while IFS='|' read -r slug version status; do
+              [ -z "$slug" ] && continue
+              current_line=$(grep "^${slug}|" /tmp/current_plugins.txt || echo "")
+              if [ -n "$current_line" ]; then
+                current_version=$(echo "$current_line" | cut -d'|' -f2)
+                echo "- \`$slug\`: $current_version → **$version**" >> $GITHUB_STEP_SUMMARY
+              fi
+            done < /tmp/plugins_to_update.txt
+          fi
+
+          if [ "$INSTALL_COUNT" -gt 0 ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Plugins to install (not currently installed):**" >> $GITHUB_STEP_SUMMARY
+            while IFS='|' read -r slug version status; do
+              [ -z "$slug" ] && continue
+              echo "- \`$slug\`: **$version** (new)" >> $GITHUB_STEP_SUMMARY
+            done < /tmp/plugins_to_install.txt
+          fi
+
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Total actions:** $TOTAL_ACTIONS" >> $GITHUB_STEP_SUMMARY
+          echo "### Themes" >> $GITHUB_STEP_SUMMARY
+          echo "- Install: $THEME_INSTALL_COUNT" >> $GITHUB_STEP_SUMMARY
+          echo "- Update (version mismatch): $THEME_UPDATE_COUNT" >> $GITHUB_STEP_SUMMARY
+
+          # Show detailed version mismatches for themes
+          if [ "$THEME_UPDATE_COUNT" -gt 0 ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Theme version mismatches (will be updated):**" >> $GITHUB_STEP_SUMMARY
+            while IFS='|' read -r slug version current_version; do
+              [ -z "$slug" ] && continue
+              echo "- \`$slug\`: $current_version → **$version**" >> $GITHUB_STEP_SUMMARY
+            done < /tmp/themes_to_update.txt
+          fi
+
+          if [ "$THEME_INSTALL_COUNT" -gt 0 ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Themes to install (not currently installed):**" >> $GITHUB_STEP_SUMMARY
+            while IFS='|' read -r slug version; do
+              [ -z "$slug" ] && continue
+              echo "- \`$slug\`: **$version** (new)" >> $GITHUB_STEP_SUMMARY
+            done < /tmp/themes_to_install.txt
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "$THEME_CURRENT" != "$THEME_TARGET" ]; then
+            echo "**Active theme change**: $THEME_CURRENT → **$THEME_TARGET** (will activate)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Active theme**: ✅ $THEME_TARGET (no change)" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "**Total actions needed:** $TOTAL_ACTIONS" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
       - name: Update WordPress Core
@@ -274,6 +366,32 @@ jobs:
             [ -z "$slug" ] && continue
             terminus wp "$SITE_NAME.dev" -- plugin deactivate "$slug" || echo "  ⚠️ Failed to deactivate $slug"
           done < /tmp/plugins_to_deactivate.txt
+
+      - name: Install new themes
+        if: steps.compare.outputs.themes_install_count > 0
+        env:
+          SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
+        run: |
+          echo "Installing ${{ steps.compare.outputs.themes_install_count }} themes..."
+          while IFS='|' read -r slug version; do
+            [ -z "$slug" ] && continue
+            echo "  Installing ${slug} ${version}..."
+            terminus wp "$SITE_NAME.dev" -- theme install "$slug" --version="$version" || echo "  ⚠️ Failed to install $slug"
+          done < /tmp/themes_to_install.txt
+
+      - name: Update existing themes
+        if: steps.compare.outputs.themes_update_count > 0
+        env:
+          SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
+        run: |
+          echo "Updating ${{ steps.compare.outputs.themes_update_count }} themes..."
+          while IFS='|' read -r slug version current_version; do
+            [ -z "$slug" ] && continue
+            echo "  Updating ${slug}: ${current_version} → ${version}..."
+            terminus wp "$SITE_NAME.dev" -- theme update "$slug" --version="$version" || \
+            terminus wp "$SITE_NAME.dev" -- theme install "$slug" --version="$version" --force || \
+            echo "  ⚠️ Failed to update $slug"
+          done < /tmp/themes_to_update.txt
 
       - name: Activate theme
         if: steps.compare.outputs.theme_current != steps.compare.outputs.theme_target
