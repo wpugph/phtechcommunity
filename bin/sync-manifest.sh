@@ -57,11 +57,11 @@ SITE_UUID=$(terminus site:info "$SITE_NAME" --field=id)
 # Function to get environment data
 get_env_data() {
     local ENV=$1
-    echo -e "${YELLOW}→ Fetching $ENV environment...${NC}"
+    echo -e "${YELLOW}→ Fetching $ENV environment...${NC}" >&2
 
     # Check if environment exists
     if ! terminus env:info "$SITE_NAME.$ENV" &> /dev/null; then
-        echo -e "${RED}  ✗ Environment $ENV not accessible${NC}"
+        echo -e "${RED}  ✗ Environment $ENV not accessible${NC}" >&2
         return 1
     fi
 
@@ -109,7 +109,7 @@ get_env_data() {
 }
 EOF
 
-    echo -e "${GREEN}  ✓ $ENV synced${NC}"
+    echo -e "${GREEN}  ✓ $ENV synced${NC}" >&2
 }
 
 # Create temp file for building new manifest
@@ -138,43 +138,43 @@ jq -n \
 for ENV in dev test live; do
     ENV_DATA=$(get_env_data "$ENV")
     if [ $? -eq 0 ]; then
-        TMP_MANIFEST=$(jq --argjson data "$ENV_DATA" ".environments.$ENV = \$data" "$TMP_MANIFEST")
-        echo "$TMP_MANIFEST" > "$TMP_MANIFEST.tmp" && mv "$TMP_MANIFEST.tmp" "$TMP_MANIFEST"
+        jq --argjson data "$ENV_DATA" ".environments.$ENV = \$data" "$TMP_MANIFEST" > "$TMP_MANIFEST.tmp"
+        mv "$TMP_MANIFEST.tmp" "$TMP_MANIFEST"
     fi
 done
 
 # Get multidev environments
-echo -e "${YELLOW}→ Fetching multidev environments...${NC}"
+echo -e "${YELLOW}→ Fetching multidev environments...${NC}" >&2
 MULTIDEVS=$(terminus multidev:list "$SITE_NAME" --format=json 2>/dev/null || echo "[]")
 MULTIDEV_COUNT=$(echo "$MULTIDEVS" | jq 'length')
 
 if [ "$MULTIDEV_COUNT" -gt 0 ]; then
-    echo -e "${BLUE}  Found $MULTIDEV_COUNT multidev(s)${NC}"
+    echo -e "${BLUE}  Found $MULTIDEV_COUNT multidev(s)${NC}" >&2
 
     # Process each multidev
     echo "$MULTIDEVS" | jq -r '.[].id' | while read -r MULTIDEV_NAME; do
         MULTIDEV_DATA=$(get_env_data "$MULTIDEV_NAME")
         if [ $? -eq 0 ]; then
-            TMP_MANIFEST=$(jq --arg name "$MULTIDEV_NAME" --argjson data "$MULTIDEV_DATA" \
-                ".environments.multidevs[\$name] = \$data" "$TMP_MANIFEST")
-            echo "$TMP_MANIFEST" > "$TMP_MANIFEST.tmp" && mv "$TMP_MANIFEST.tmp" "$TMP_MANIFEST"
+            jq --arg name "$MULTIDEV_NAME" --argjson data "$MULTIDEV_DATA" \
+                ".environments.multidevs[\$name] = \$data" "$TMP_MANIFEST" > "$TMP_MANIFEST.tmp"
+            mv "$TMP_MANIFEST.tmp" "$TMP_MANIFEST"
         fi
     done
 else
-    echo -e "${BLUE}  No multidev environments found${NC}"
+    echo -e "${BLUE}  No multidev environments found${NC}" >&2
 fi
 
 # Save final manifest
 cat "$TMP_MANIFEST" | jq '.' > "$MANIFEST_FILE"
 rm -f "$TMP_MANIFEST" "$TMP_MANIFEST.tmp"
 
-echo ""
-echo -e "${GREEN}╔════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║  ✓ Manifest synced successfully!           ║${NC}"
-echo -e "${GREEN}╚════════════════════════════════════════════╝${NC}"
-echo -e "${BLUE}Manifest saved to: $MANIFEST_FILE${NC}"
-echo ""
-echo -e "${YELLOW}Next steps:${NC}"
-echo -e "  1. Review bin/manifest.json"
-echo -e "  2. Commit to git: git add bin/manifest.json && git commit -m 'Update environment manifest'"
-echo -e "  3. Bootstrap local: ./bin/bootstrap-env.sh dev"
+echo "" >&2
+echo -e "${GREEN}╔════════════════════════════════════════════╗${NC}" >&2
+echo -e "${GREEN}║  ✓ Manifest synced successfully!           ║${NC}" >&2
+echo -e "${GREEN}╚════════════════════════════════════════════╝${NC}" >&2
+echo -e "${BLUE}Manifest saved to: $MANIFEST_FILE${NC}" >&2
+echo "" >&2
+echo -e "${YELLOW}Next steps:${NC}" >&2
+echo -e "  1. Review bin/manifest.json" >&2
+echo -e "  2. Commit to git: git add bin/manifest.json && git commit -m 'Update environment manifest'" >&2
+echo -e "  3. Bootstrap local: ./bin/bootstrap-env.sh dev" >&2
