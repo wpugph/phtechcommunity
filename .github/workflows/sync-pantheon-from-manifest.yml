@@ -111,6 +111,7 @@ jobs:
           touch /tmp/plugins_updated.txt
           touch /tmp/plugins_activated.txt
           touch /tmp/plugins_deactivated.txt
+          touch /tmp/plugins_uninstalled.txt
           touch /tmp/themes_installed.txt
           touch /tmp/themes_updated.txt
 
@@ -217,6 +218,7 @@ jobs:
           > /tmp/plugins_to_update.txt
           > /tmp/plugins_to_activate.txt
           > /tmp/plugins_to_deactivate.txt
+          > /tmp/plugins_to_uninstall.txt
 
           # Sanity check before comparison
           if [ ! -f /tmp/manifest_plugins.txt ] || [ ! -s /tmp/manifest_plugins.txt ]; then
@@ -247,8 +249,9 @@ jobs:
               current_status=$(echo "$current_line" | cut -d'|' -f3)
 
               if [ "$FORCE" = "true" ] || [ "$current_version" != "$version" ]; then
-                echo "  → Update: $slug $current_version → $version"
-                echo "${slug}|${version}|${status}" >> /tmp/plugins_to_update.txt
+                # Version mismatch - could be upgrade or downgrade
+                echo "  → Version change: $slug $current_version → $version"
+                echo "${slug}|${version}|${current_version}|${status}" >> /tmp/plugins_to_update.txt
               elif [ "$status" = "active" ] && [ "$current_status" != "active" ]; then
                 echo "  → Activate: $slug"
                 echo "$slug" >> /tmp/plugins_to_activate.txt
@@ -260,6 +263,23 @@ jobs:
               fi
             fi
           done < /tmp/manifest_plugins.txt
+
+          # Check for plugins in dev that are NOT in manifest (need to uninstall)
+          echo ""
+          echo "Checking for extra plugins to uninstall..."
+          while IFS='|' read -r slug version status; do
+            # Skip excluded plugins
+            if echo "$EXCLUDED" | grep -qE "(^|\\|)${slug}(\\||$)"; then
+              echo "  Skipping excluded: $slug"
+              continue
+            fi
+
+            # Check if plugin exists in manifest
+            if ! grep -q "^${slug}|" /tmp/manifest_plugins.txt; then
+              echo "  → Uninstall: $slug $version (not in manifest)"
+              echo "${slug}|${version}" >> /tmp/plugins_to_uninstall.txt
+            fi
+          done < /tmp/current_plugins.txt
           echo ""
 
           # Get themes from manifest and current state
@@ -311,6 +331,7 @@ jobs:
           UPDATE_COUNT=$(wc -l < /tmp/plugins_to_update.txt | xargs)
           ACTIVATE_COUNT=$(wc -l < /tmp/plugins_to_activate.txt | xargs)
           DEACTIVATE_COUNT=$(wc -l < /tmp/plugins_to_deactivate.txt | xargs)
+          UNINSTALL_COUNT=$(wc -l < /tmp/plugins_to_uninstall.txt | xargs)
           THEME_INSTALL_COUNT=$(wc -l < /tmp/themes_to_install.txt | xargs)
           THEME_UPDATE_COUNT=$(wc -l < /tmp/themes_to_update.txt | xargs)
 
@@ -318,13 +339,14 @@ jobs:
           echo "plugins_update_count=$UPDATE_COUNT" >> $GITHUB_OUTPUT
           echo "plugins_activate_count=$ACTIVATE_COUNT" >> $GITHUB_OUTPUT
           echo "plugins_deactivate_count=$DEACTIVATE_COUNT" >> $GITHUB_OUTPUT
+          echo "plugins_uninstall_count=$UNINSTALL_COUNT" >> $GITHUB_OUTPUT
           echo "themes_install_count=$THEME_INSTALL_COUNT" >> $GITHUB_OUTPUT
           echo "themes_update_count=$THEME_UPDATE_COUNT" >> $GITHUB_OUTPUT
 
           # Calculate total actions
           TOTAL_ACTIONS=0
           [ "$WP_CURRENT" != "$WP_TARGET" ] && TOTAL_ACTIONS=$((TOTAL_ACTIONS + 1))
-          TOTAL_ACTIONS=$((TOTAL_ACTIONS + INSTALL_COUNT + UPDATE_COUNT + ACTIVATE_COUNT + DEACTIVATE_COUNT + THEME_INSTALL_COUNT + THEME_UPDATE_COUNT))
+          TOTAL_ACTIONS=$((TOTAL_ACTIONS + INSTALL_COUNT + UPDATE_COUNT + ACTIVATE_COUNT + DEACTIVATE_COUNT + UNINSTALL_COUNT + THEME_INSTALL_COUNT + THEME_UPDATE_COUNT))
 
           echo "total_actions=$TOTAL_ACTIONS" >> $GITHUB_OUTPUT
 
@@ -343,21 +365,18 @@ jobs:
 
           echo "### Plugins" >> $GITHUB_STEP_SUMMARY
           echo "- Install: $INSTALL_COUNT" >> $GITHUB_STEP_SUMMARY
-          echo "- Update (version mismatch): $UPDATE_COUNT" >> $GITHUB_STEP_SUMMARY
+          echo "- Update/Downgrade (version mismatch): $UPDATE_COUNT" >> $GITHUB_STEP_SUMMARY
           echo "- Activate: $ACTIVATE_COUNT" >> $GITHUB_STEP_SUMMARY
           echo "- Deactivate: $DEACTIVATE_COUNT" >> $GITHUB_STEP_SUMMARY
+          echo "- Uninstall (not in manifest): $UNINSTALL_COUNT" >> $GITHUB_STEP_SUMMARY
 
           # Show detailed version mismatches for plugins
           if [ "$UPDATE_COUNT" -gt 0 ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Plugin version mismatches (will be updated):**" >> $GITHUB_STEP_SUMMARY
-            while IFS='|' read -r slug version status; do
+            echo "**Plugin version mismatches (will be updated/downgraded):**" >> $GITHUB_STEP_SUMMARY
+            while IFS='|' read -r slug version current_version status; do
               [ -z "$slug" ] && continue
-              current_line=$(grep "^${slug}|" /tmp/current_plugins.txt || echo "")
-              if [ -n "$current_line" ]; then
-                current_version=$(echo "$current_line" | cut -d'|' -f2)
-                echo "- \`$slug\`: $current_version → **$version**" >> $GITHUB_STEP_SUMMARY
-              fi
+              echo "- \`$slug\`: $current_version → **$version**" >> $GITHUB_STEP_SUMMARY
             done < /tmp/plugins_to_update.txt
           fi
 
@@ -368,6 +387,15 @@ jobs:
               [ -z "$slug" ] && continue
               echo "- \`$slug\`: **$version** (new)" >> $GITHUB_STEP_SUMMARY
             done < /tmp/plugins_to_install.txt
+          fi
+
+          if [ "$UNINSTALL_COUNT" -gt 0 ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Plugins to uninstall (not in manifest):**" >> $GITHUB_STEP_SUMMARY
+            while IFS='|' read -r slug version; do
+              [ -z "$slug" ] && continue
+              echo "- \`$slug\`: $version (will be removed)" >> $GITHUB_STEP_SUMMARY
+            done < /tmp/plugins_to_uninstall.txt
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -451,23 +479,24 @@ jobs:
         env:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
         run: |
-          echo "Updating ${{ steps.compare.outputs.plugins_update_count }} plugins..."
+          echo "Updating/downgrading ${{ steps.compare.outputs.plugins_update_count }} plugins..."
           > /tmp/plugins_updated.txt
-          while IFS='|' read -r slug version status; do
+          while IFS='|' read -r slug version current_version status; do
             [ -z "$slug" ] && continue
 
-            # Get current version for logging
-            current_version=$(grep "^${slug}|" /tmp/current_plugins.txt | cut -d'|' -f2 || echo "unknown")
-
-            echo "  Updating ${slug}: ${current_version} → ${version}..."
-            if terminus wp "$SITE_NAME.dev" -- plugin update "$slug" --version="$version" || \
-               terminus wp "$SITE_NAME.dev" -- plugin install "$slug" --version="$version" --force; then
+            echo "  Changing ${slug}: ${current_version} → ${version}..."
+            # For version changes (upgrade or downgrade), we use install with --force and specific version
+            if terminus wp "$SITE_NAME.dev" -- plugin install "$slug" --version="$version" --force; then
               echo "$slug: $current_version → $version" >> /tmp/plugins_updated.txt
-              [ "$status" = "active" ] && terminus wp "$SITE_NAME.dev" -- plugin activate "$slug" 2>/dev/null || true
-              [ "$status" = "inactive" ] && terminus wp "$SITE_NAME.dev" -- plugin deactivate "$slug" 2>/dev/null || true
-              echo "  ✅ Updated: $slug $current_version → $version"
+              # Apply activation status from manifest
+              if [ "$status" = "active" ]; then
+                terminus wp "$SITE_NAME.dev" -- plugin activate "$slug" 2>/dev/null || true
+              elif [ "$status" = "inactive" ]; then
+                terminus wp "$SITE_NAME.dev" -- plugin deactivate "$slug" 2>/dev/null || true
+              fi
+              echo "  ✅ Changed: $slug $current_version → $version"
             else
-              echo "  ❌ Failed to update $slug"
+              echo "  ❌ Failed to change $slug version"
             fi
           done < /tmp/plugins_to_update.txt
 
@@ -504,6 +533,27 @@ jobs:
               echo "  ❌ Failed to deactivate $slug"
             fi
           done < /tmp/plugins_to_deactivate.txt
+
+      - name: Uninstall plugins not in manifest
+        if: steps.compare.outputs.plugins_uninstall_count > 0
+        env:
+          SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
+        run: |
+          echo "Uninstalling ${{ steps.compare.outputs.plugins_uninstall_count }} plugins not in manifest..."
+          > /tmp/plugins_uninstalled.txt
+          while IFS='|' read -r slug version; do
+            [ -z "$slug" ] && continue
+            echo "  Uninstalling ${slug} ${version}..."
+            # Deactivate first if active
+            terminus wp "$SITE_NAME.dev" -- plugin deactivate "$slug" 2>/dev/null || true
+            # Then uninstall
+            if terminus wp "$SITE_NAME.dev" -- plugin uninstall "$slug" --deactivate; then
+              echo "$slug $version" >> /tmp/plugins_uninstalled.txt
+              echo "  ✅ Uninstalled: $slug $version"
+            else
+              echo "  ❌ Failed to uninstall $slug"
+            fi
+          done < /tmp/plugins_to_uninstall.txt
 
       - name: Install new themes
         if: steps.compare.outputs.themes_install_count > 0
@@ -625,6 +675,15 @@ jobs:
             echo "" >> /tmp/commit_message.txt
           fi
 
+          # Add plugin uninstalls
+          if [ -f /tmp/plugins_uninstalled.txt ] && [ -s /tmp/plugins_uninstalled.txt ]; then
+            echo "Plugins uninstalled (not in manifest):" >> /tmp/commit_message.txt
+            while read line; do
+              echo "  - $line" >> /tmp/commit_message.txt
+            done < /tmp/plugins_uninstalled.txt
+            echo "" >> /tmp/commit_message.txt
+          fi
+
           # Show commit message
           echo "Commit message:"
           cat /tmp/commit_message.txt
@@ -679,6 +738,7 @@ jobs:
           PLUGINS_UPDATED=0
           PLUGINS_ACTIVATED=0
           PLUGINS_DEACTIVATED=0
+          PLUGINS_UNINSTALLED=0
           THEMES_INSTALLED=0
           THEMES_UPDATED=0
 
@@ -687,10 +747,11 @@ jobs:
           [ -f /tmp/plugins_updated.txt ] && PLUGINS_UPDATED=$(wc -l < /tmp/plugins_updated.txt | xargs)
           [ -f /tmp/plugins_activated.txt ] && PLUGINS_ACTIVATED=$(wc -l < /tmp/plugins_activated.txt | xargs)
           [ -f /tmp/plugins_deactivated.txt ] && PLUGINS_DEACTIVATED=$(wc -l < /tmp/plugins_deactivated.txt | xargs)
+          [ -f /tmp/plugins_uninstalled.txt ] && PLUGINS_UNINSTALLED=$(wc -l < /tmp/plugins_uninstalled.txt | xargs)
           [ -f /tmp/themes_installed.txt ] && THEMES_INSTALLED=$(wc -l < /tmp/themes_installed.txt | xargs)
           [ -f /tmp/themes_updated.txt ] && THEMES_UPDATED=$(wc -l < /tmp/themes_updated.txt | xargs)
 
-          TOTAL_CHANGES=$((WP_CHANGED + PLUGINS_INSTALLED + PLUGINS_UPDATED + PLUGINS_ACTIVATED + PLUGINS_DEACTIVATED + THEMES_INSTALLED + THEMES_UPDATED))
+          TOTAL_CHANGES=$((WP_CHANGED + PLUGINS_INSTALLED + PLUGINS_UPDATED + PLUGINS_ACTIVATED + PLUGINS_DEACTIVATED + PLUGINS_UNINSTALLED + THEMES_INSTALLED + THEMES_UPDATED))
 
           echo "**Actions planned:** ${{ steps.compare.outputs.total_actions }}" >> $GITHUB_STEP_SUMMARY
           echo "**Changes applied:** $TOTAL_CHANGES" >> $GITHUB_STEP_SUMMARY
@@ -759,6 +820,15 @@ jobs:
               while read line; do
                 echo "- ✅ $line" >> $GITHUB_STEP_SUMMARY
               done < /tmp/plugins_deactivated.txt
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
+
+            # Plugins uninstalled
+            if [ "$PLUGINS_UNINSTALLED" -gt 0 ]; then
+              echo "**Plugins Uninstalled ($PLUGINS_UNINSTALLED):**" >> $GITHUB_STEP_SUMMARY
+              while read line; do
+                echo "- 🗑️ $line" >> $GITHUB_STEP_SUMMARY
+              done < /tmp/plugins_uninstalled.txt
               echo "" >> $GITHUB_STEP_SUMMARY
             fi
           else
