@@ -1,0 +1,21 @@
+# Manifest Exclusions
+# Plugins and themes listed here will NOT be included in the manifest
+# One item per line, use exact plugin/theme slugs
+# Lines starting with # are comments
+
+# Environment-specific plugins (Pantheon-only)
+pantheon-advanced-page-cache
+pantheon-mu-plugin
+wp-native-php-sessions
+
+# File sync plugins (local/staging only)
+uploads-sync
+
+# Development/debugging plugins (add yours here)
+# query-monitor
+# debug-bar
+
+# Themes to exclude (use theme slug)
+# twentytwentyfive
+# twentytwentyfour
+# twentytwentythree
