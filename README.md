@@ -2,7 +2,7 @@
 
 [![Pantheon](https://img.shields.io/badge/Pantheon-Hosted-yellow)](https://pantheon.io)
 [![WordPress](https://img.shields.io/badge/WordPress-6.8.3-blue)](https://wordpress.org)
-[![PHP](https://img.shields.io/badge/PHP-8.2-purple)](https://php.net)
+[![PHP](https://img.shields.io/badge/PHP-7.4-purple)](https://php.net)
 [![License](https://img.shields.io/badge/license-GPL--2.0-green)](LICENSE)
 
 > A WordPress-powered platform for managing and showcasing tech community events across the Philippines.
@@ -32,7 +32,7 @@ EventsPH is a community-driven platform that aggregates and promotes technology 
 
 **Platform:**
 - **CMS:** WordPress 6.8.3
-- **Hosting:** Pantheon (PHP 8.2 on dev, PHP 7.4 on test/live)
+- **Hosting:** Pantheon (PHP 7.4 across all environments)
 - **Version Control:** Git + GitHub
 - **CI/CD:** GitHub Actions
 
@@ -58,18 +58,26 @@ This repository uses a **manifest-based deployment approach** - only custom code
 .
 ├── bin/                              # Deployment tools (NOT deployed to Pantheon)
 │   ├── manifest.json                 # Environment state for dev/test/live
-│   ├── sync-manifest.sh              # Sync from Pantheon
-│   ├── bootstrap-env.sh              # Replicate environment locally
-│   └── setup.sh                      # First-time setup
+│   ├── manifest-exclude.txt          # Plugins/themes to exclude from manifest
+│   ├── sync-manifest.sh              # Sync from Pantheon to manifest
+│   ├── local-install.sh              # Install from manifest to local
+│   └── bootstrap-env.sh              # Legacy: Replicate environment locally
 ├── .github/workflows/
-│   └── deploy-pantheon.yml           # Auto-deploy on merged PRs
+│   ├── deploy-pantheon.yml           # Auto-deploy on merged PRs
+│   ├── sync-manifest-from-pantheon.yml  # Scheduled manifest sync
+│   └── sync-plugins-to-pantheon.yml  # Sync plugins/themes to Pantheon
 ├── wp-content/
 │   ├── themes/phcommunity.tech/      # ✅ Custom theme (tracked)
 │   ├── plugins/                      # ❌ Not tracked (managed via manifest)
 │   ├── themes/                       # ❌ Not tracked (managed via manifest)
 │   └── mu-plugins/                   # ✅ Custom MU plugins (tracked)
+├── wp-config-local.php               # ✅ Local development config (Local by Flywheel)
 ├── .gitignore                        # Excludes WP core, plugins, themes
-├── DEPLOYMENT.md                     # Deployment documentation
+├── DOCS/                             # Documentation
+│   ├── DEPLOYMENT.md                 # Deployment guide
+│   ├── WORKFLOWS.md                  # GitHub Actions workflows
+│   ├── CHANGELOG.md                  # Change history
+│   └── URGENT-FIX.md                 # Critical fixes
 └── README.md                         # This file
 ```
 
@@ -97,53 +105,155 @@ This repository uses a **manifest-based deployment approach** - only custom code
 
 ### Prerequisites
 
+**For Local Development:**
+- [Local by Flywheel](https://localwp.com) (recommended) OR LAMP/LEMP stack
 - [WP-CLI](https://wp-cli.org/) - `brew install wp-cli`
 - [jq](https://stedolan.github.io/jq/) - `brew install jq`
-- [Terminus](https://pantheon.io/docs/terminus/install) - Pantheon CLI
-- PHP 8.2+ (for local development)
-- Composer (optional, for plugin management)
+- PHP 7.4+ (matches production environment)
+
+**For Pantheon Integration:**
+- [Terminus](https://pantheon.io/docs/terminus/install) - Pantheon CLI tool
+- Pantheon Machine Token (get from [dashboard](https://dashboard.pantheon.io/users/#account/tokens/))
+
+**Optional:**
+- Composer (for advanced plugin management)
 
 ### Local Setup
 
+We recommend using **Local by Flywheel** for local WordPress development, but you can also use any LAMP/LEMP stack.
+
+#### Option A: Using Local by Flywheel (Recommended)
+
+1. **Install Local by Flywheel:**
+   - Download from [localwp.com](https://localwp.com)
+   - Create a new site (e.g., `phtech1.local`)
+   - Choose "Custom" setup with PHP 7.4
+
+2. **Clone repository into Local site:**
+   ```bash
+   cd ~/Local\ Sites/phtech1/app/public
+   git clone https://github.com/wpugph/eventsph.git .
+   ```
+
+3. **Create local configuration:**
+   ```bash
+   # wp-config-local.php already exists in the repo
+   # Verify it matches your Local database credentials
+   cat wp-config-local.php
+   ```
+
+4. **Sync manifest from Pantheon:**
+   ```bash
+   # First time: authenticate with Pantheon
+   terminus auth:login --machine-token=YOUR_TOKEN
+   
+   # Sync environment state
+   ./bin/sync-manifest.sh eventsph
+   ```
+
+5. **Install WordPress, plugins, and themes from manifest:**
+   ```bash
+   # Install everything from dev environment
+   ./bin/local-install.sh
+   
+   # Or force reinstall if needed
+   ./bin/local-install.sh --force
+   
+   # Install from test or live environment
+   ./bin/local-install.sh --source-env=live
+   ```
+
+6. **Import database from Pantheon (optional):**
+   ```bash
+   # Create backup and download
+   terminus backup:create eventsph.dev --element=db
+   terminus backup:get eventsph.dev --element=db --to=~/Downloads/
+   
+   # Import into Local
+   wp db import ~/Downloads/eventsph_dev_*.sql
+   
+   # Update URLs for local
+   wp search-replace 'https://dev-eventsph.pantheonsite.io' 'http://phtech1.local'
+   ```
+
+7. **Access your local site:**
+   - Open Local by Flywheel
+   - Click "Open Site" → http://phtech1.local
+   - Click "Admin" → http://phtech1.local/wp-admin
+
+#### Option B: Manual Setup (LAMP/LEMP/MAMP)
+
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/YOUR_ORG/eventsph.git
+   git clone https://github.com/wpugph/eventsph.git
    cd eventsph
    ```
 
-2. **Run first-time setup:**
+2. **Create wp-config.php:**
    ```bash
-   ./bin/setup.sh
+   # Copy and edit with your database credentials
+   cp wp-config-sample.php wp-config.php
+   nano wp-config.php
    ```
-   This will:
-   - Check dependencies
-   - Authenticate with Pantheon
-   - Sync environment manifest
-   - Configure git remotes
 
-3. **Bootstrap your local environment:**
+3. **Sync and install from manifest:**
    ```bash
-   # Replicate dev environment
-   ./bin/bootstrap-env.sh dev
+   # Sync manifest from Pantheon
+   ./bin/sync-manifest.sh eventsph
+   
+   # Install WordPress, plugins, themes
+   ./bin/local-install.sh
    ```
-   This installs WordPress core, plugins, and themes matching the dev environment.
 
-4. **Configure local database:**
+4. **Create and import database:**
    ```bash
-   # Create local database
    wp db create
-
-   # Import from Pantheon (optional)
+   
+   # Optional: Import from Pantheon
    terminus backup:create eventsph.dev --element=db
-   terminus backup:get eventsph.dev --element=db
-   wp db import <downloaded-backup>.sql
+   terminus backup:get eventsph.dev --element=db --to=.
+   wp db import *.sql
    ```
 
-5. **Start local server:**
+5. **Start server:**
    ```bash
    wp server
    # Site available at http://localhost:8080
    ```
+
+### Excluding Plugins/Themes from Manifest
+
+Some plugins are environment-specific (e.g., Pantheon-only plugins) and shouldn't be synced locally.
+
+**Edit `bin/manifest-exclude.txt`:**
+```txt
+# Add plugin/theme slugs (one per line)
+pantheon-advanced-page-cache
+uploads-sync
+query-monitor
+```
+
+These exclusions apply to:
+- `./bin/sync-manifest.sh` - Won't include them in manifest
+- `./bin/local-install.sh` - Won't install them locally
+
+### Keeping Local Environment in Sync
+
+When Pantheon environment is updated:
+
+```bash
+# 1. Sync latest manifest from Pantheon
+./bin/sync-manifest.sh eventsph
+
+# 2. Update local installation
+./bin/local-install.sh
+
+# 3. Optional: Pull latest database
+terminus backup:create eventsph.dev --element=db
+terminus backup:get eventsph.dev --element=db --to=.
+wp db import *.sql
+wp search-replace 'https://dev-eventsph.pantheonsite.io' 'http://phtech1.local'
+```
 
 ---
 
@@ -207,13 +317,25 @@ git push
 
 ### Syncing Environment State
 
-Pull latest state from all Pantheon environments:
+**Pull latest state from Pantheon environments:**
 
 ```bash
+# Sync dev, test, and live environments
 ./bin/sync-manifest.sh eventsph
+
+# Commit the updated manifest
+git add bin/manifest.json
+git commit -m "Update: Sync manifest from Pantheon"
+git push
 ```
 
-This updates `bin/manifest.json` with current versions of WordPress, PHP, plugins, and themes across dev, test, live, and multidev environments.
+This updates `bin/manifest.json` with current versions of WordPress, PHP, plugins, and themes across dev, test, and live environments.
+
+**Notes:**
+- Only **dev** environment is writable (plugins can be installed/updated)
+- **test** and **live** are read-only snapshots for reference
+- Plugins/themes listed in `bin/manifest-exclude.txt` will be skipped
+- Manifest sync runs automatically via GitHub Actions every Monday
 
 ---
 
@@ -306,9 +428,10 @@ We welcome contributions from the community! Here's how you can help:
 
 ## 📚 Documentation
 
-- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Complete deployment guide
-- **[bin/README.md](bin/README.md)** - Deployment scripts documentation
-- **[URGENT-FIX.md](URGENT-FIX.md)** - Fix for current MU plugin conflict
+- **[DOCS/DEPLOYMENT.md](DOCS/DEPLOYMENT.md)** - Complete deployment guide
+- **[DOCS/WORKFLOWS.md](DOCS/WORKFLOWS.md)** - GitHub Actions workflows documentation
+- **[DOCS/CHANGELOG.md](DOCS/CHANGELOG.md)** - Project change history
+- **[DOCS/URGENT-FIX.md](DOCS/URGENT-FIX.md)** - Critical fixes and troubleshooting
 - **[Pantheon Docs](https://pantheon.io/docs)** - Platform documentation
 - **[WordPress Codex](https://codex.wordpress.org/)** - WordPress documentation
 
@@ -318,20 +441,47 @@ We welcome contributions from the community! Here's how you can help:
 
 ### "Environment not found in manifest"
 ```bash
+# Sync manifest from Pantheon
 ./bin/sync-manifest.sh eventsph
 ```
 
-### Plugin installation failed
-Check if plugin exists on WordPress.org. Premium plugins need manual installation.
-
-### Local environment out of sync
+### Plugin installation failed locally
 ```bash
-./bin/sync-manifest.sh eventsph
-./bin/bootstrap-env.sh dev
+# Check if plugin exists on WordPress.org
+# Premium plugins need manual installation via wp-admin
+
+# Try forcing installation
+./bin/local-install.sh --force
 ```
 
-### Site shows critical error
-See **[URGENT-FIX.md](URGENT-FIX.md)** for fixing the duplicate MU plugin issue.
+### Local environment out of sync with Pantheon
+```bash
+# 1. Sync latest manifest
+./bin/sync-manifest.sh eventsph
+
+# 2. Reinstall from manifest
+./bin/local-install.sh --force
+
+# 3. Optional: Import fresh database
+terminus backup:create eventsph.dev --element=db
+terminus backup:get eventsph.dev --element=db --to=.
+wp db import *.sql
+wp search-replace 'https://dev-eventsph.pantheonsite.io' 'http://phtech1.local'
+```
+
+### "Plugin X should not be installed locally"
+```bash
+# Add plugin slug to exclusion list
+echo "plugin-slug" >> bin/manifest-exclude.txt
+
+# Re-sync manifest
+./bin/sync-manifest.sh eventsph
+git add bin/manifest-exclude.txt bin/manifest.json
+git commit -m "Exclude plugin-slug from manifest"
+```
+
+### Site shows critical error on Pantheon
+See **[DOCS/URGENT-FIX.md](DOCS/URGENT-FIX.md)** for fixing common issues.
 
 ---
 
