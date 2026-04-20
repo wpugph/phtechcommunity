@@ -105,6 +105,15 @@ jobs:
             echo "excluded=" >> $GITHUB_OUTPUT
           fi
 
+          # Initialize tracking files
+          touch /tmp/changes_made.txt
+          touch /tmp/plugins_installed.txt
+          touch /tmp/plugins_updated.txt
+          touch /tmp/plugins_activated.txt
+          touch /tmp/plugins_deactivated.txt
+          touch /tmp/themes_installed.txt
+          touch /tmp/themes_updated.txt
+
       - name: Compare current state with manifest
         id: compare
         env:
@@ -311,10 +320,18 @@ jobs:
         env:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
           WP_TARGET: ${{ steps.compare.outputs.wp_target }}
+          WP_CURRENT: ${{ steps.compare.outputs.wp_current }}
         run: |
-          echo "Updating WordPress to $WP_TARGET..."
-          terminus wp "$SITE_NAME.dev" -- core update --version="$WP_TARGET" || \
-          terminus wp "$SITE_NAME.dev" -- core download --version="$WP_TARGET" --force
+          echo "Updating WordPress from $WP_CURRENT to $WP_TARGET..."
+
+          if terminus wp "$SITE_NAME.dev" -- core update --version="$WP_TARGET" || \
+             terminus wp "$SITE_NAME.dev" -- core download --version="$WP_TARGET" --force; then
+            echo "✅ WordPress updated: $WP_CURRENT → $WP_TARGET"
+            echo "WordPress: $WP_CURRENT → $WP_TARGET" > /tmp/changes_made.txt
+          else
+            echo "❌ WordPress update failed"
+            touch /tmp/changes_made.txt
+          fi
 
       - name: Install new plugins
         if: steps.compare.outputs.plugins_install_count > 0
@@ -322,11 +339,17 @@ jobs:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
         run: |
           echo "Installing ${{ steps.compare.outputs.plugins_install_count }} plugins..."
+          > /tmp/plugins_installed.txt
           while IFS='|' read -r slug version status; do
             [ -z "$slug" ] && continue
             echo "  Installing ${slug} ${version}..."
-            terminus wp "$SITE_NAME.dev" -- plugin install "$slug" --version="$version" || echo "  ⚠️ Failed to install $slug"
-            [ "$status" = "active" ] && terminus wp "$SITE_NAME.dev" -- plugin activate "$slug" 2>/dev/null || true
+            if terminus wp "$SITE_NAME.dev" -- plugin install "$slug" --version="$version"; then
+              echo "$slug $version" >> /tmp/plugins_installed.txt
+              [ "$status" = "active" ] && terminus wp "$SITE_NAME.dev" -- plugin activate "$slug" 2>/dev/null || true
+              echo "  ✅ Installed: $slug $version"
+            else
+              echo "  ❌ Failed to install $slug"
+            fi
           done < /tmp/plugins_to_install.txt
 
       - name: Update existing plugins
@@ -335,14 +358,23 @@ jobs:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
         run: |
           echo "Updating ${{ steps.compare.outputs.plugins_update_count }} plugins..."
+          > /tmp/plugins_updated.txt
           while IFS='|' read -r slug version status; do
             [ -z "$slug" ] && continue
-            echo "  Updating ${slug} to ${version}..."
-            terminus wp "$SITE_NAME.dev" -- plugin update "$slug" --version="$version" || \
-            terminus wp "$SITE_NAME.dev" -- plugin install "$slug" --version="$version" --force || \
-            echo "  ⚠️ Failed to update $slug"
-            [ "$status" = "active" ] && terminus wp "$SITE_NAME.dev" -- plugin activate "$slug" 2>/dev/null || true
-            [ "$status" = "inactive" ] && terminus wp "$SITE_NAME.dev" -- plugin deactivate "$slug" 2>/dev/null || true
+
+            # Get current version for logging
+            current_version=$(grep "^${slug}|" /tmp/current_plugins.txt | cut -d'|' -f2 || echo "unknown")
+
+            echo "  Updating ${slug}: ${current_version} → ${version}..."
+            if terminus wp "$SITE_NAME.dev" -- plugin update "$slug" --version="$version" || \
+               terminus wp "$SITE_NAME.dev" -- plugin install "$slug" --version="$version" --force; then
+              echo "$slug: $current_version → $version" >> /tmp/plugins_updated.txt
+              [ "$status" = "active" ] && terminus wp "$SITE_NAME.dev" -- plugin activate "$slug" 2>/dev/null || true
+              [ "$status" = "inactive" ] && terminus wp "$SITE_NAME.dev" -- plugin deactivate "$slug" 2>/dev/null || true
+              echo "  ✅ Updated: $slug $current_version → $version"
+            else
+              echo "  ❌ Failed to update $slug"
+            fi
           done < /tmp/plugins_to_update.txt
 
       - name: Activate plugins
@@ -351,9 +383,15 @@ jobs:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
         run: |
           echo "Activating ${{ steps.compare.outputs.plugins_activate_count }} plugins..."
+          > /tmp/plugins_activated.txt
           while read -r slug; do
             [ -z "$slug" ] && continue
-            terminus wp "$SITE_NAME.dev" -- plugin activate "$slug" || echo "  ⚠️ Failed to activate $slug"
+            if terminus wp "$SITE_NAME.dev" -- plugin activate "$slug"; then
+              echo "$slug" >> /tmp/plugins_activated.txt
+              echo "  ✅ Activated: $slug"
+            else
+              echo "  ❌ Failed to activate $slug"
+            fi
           done < /tmp/plugins_to_activate.txt
 
       - name: Deactivate plugins
@@ -362,9 +400,15 @@ jobs:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
         run: |
           echo "Deactivating ${{ steps.compare.outputs.plugins_deactivate_count }} plugins..."
+          > /tmp/plugins_deactivated.txt
           while read -r slug; do
             [ -z "$slug" ] && continue
-            terminus wp "$SITE_NAME.dev" -- plugin deactivate "$slug" || echo "  ⚠️ Failed to deactivate $slug"
+            if terminus wp "$SITE_NAME.dev" -- plugin deactivate "$slug"; then
+              echo "$slug" >> /tmp/plugins_deactivated.txt
+              echo "  ✅ Deactivated: $slug"
+            else
+              echo "  ❌ Failed to deactivate $slug"
+            fi
           done < /tmp/plugins_to_deactivate.txt
 
       - name: Install new themes
@@ -373,10 +417,16 @@ jobs:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
         run: |
           echo "Installing ${{ steps.compare.outputs.themes_install_count }} themes..."
+          > /tmp/themes_installed.txt
           while IFS='|' read -r slug version; do
             [ -z "$slug" ] && continue
             echo "  Installing ${slug} ${version}..."
-            terminus wp "$SITE_NAME.dev" -- theme install "$slug" --version="$version" || echo "  ⚠️ Failed to install $slug"
+            if terminus wp "$SITE_NAME.dev" -- theme install "$slug" --version="$version"; then
+              echo "$slug $version" >> /tmp/themes_installed.txt
+              echo "  ✅ Installed: $slug $version"
+            else
+              echo "  ❌ Failed to install $slug"
+            fi
           done < /tmp/themes_to_install.txt
 
       - name: Update existing themes
@@ -385,12 +435,17 @@ jobs:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
         run: |
           echo "Updating ${{ steps.compare.outputs.themes_update_count }} themes..."
+          > /tmp/themes_updated.txt
           while IFS='|' read -r slug version current_version; do
             [ -z "$slug" ] && continue
             echo "  Updating ${slug}: ${current_version} → ${version}..."
-            terminus wp "$SITE_NAME.dev" -- theme update "$slug" --version="$version" || \
-            terminus wp "$SITE_NAME.dev" -- theme install "$slug" --version="$version" --force || \
-            echo "  ⚠️ Failed to update $slug"
+            if terminus wp "$SITE_NAME.dev" -- theme update "$slug" --version="$version" || \
+               terminus wp "$SITE_NAME.dev" -- theme install "$slug" --version="$version" --force; then
+              echo "$slug: $current_version → $version" >> /tmp/themes_updated.txt
+              echo "  ✅ Updated: $slug $current_version → $version"
+            else
+              echo "  ❌ Failed to update $slug"
+            fi
           done < /tmp/themes_to_update.txt
 
       - name: Activate theme
@@ -408,8 +463,80 @@ jobs:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
           SOURCE_ENV: ${{ steps.load_manifest.outputs.source_env }}
         run: |
-          echo "Committing changes to Pantheon dev..."
-          terminus env:commit "$SITE_NAME.dev" --message="Sync from manifest ($SOURCE_ENV): ${{ steps.compare.outputs.total_actions }} changes applied via GitHub Actions" || echo "⚠️ No changes to commit or commit failed"
+          echo "Building commit message with changes..."
+
+          # Build detailed commit message
+          cat > /tmp/commit_message.txt <<EOF
+          Sync from manifest ($SOURCE_ENV) via GitHub Actions
+
+          EOF
+
+          # Add WordPress core changes
+          if [ -f /tmp/changes_made.txt ]; then
+            cat /tmp/changes_made.txt >> /tmp/commit_message.txt
+            echo "" >> /tmp/commit_message.txt
+          fi
+
+          # Add plugin installations
+          if [ -f /tmp/plugins_installed.txt ] && [ -s /tmp/plugins_installed.txt ]; then
+            echo "Plugins installed:" >> /tmp/commit_message.txt
+            while read line; do
+              echo "  - $line" >> /tmp/commit_message.txt
+            done < /tmp/plugins_installed.txt
+            echo "" >> /tmp/commit_message.txt
+          fi
+
+          # Add plugin updates
+          if [ -f /tmp/plugins_updated.txt ] && [ -s /tmp/plugins_updated.txt ]; then
+            echo "Plugins updated:" >> /tmp/commit_message.txt
+            while read line; do
+              echo "  - $line" >> /tmp/commit_message.txt
+            done < /tmp/plugins_updated.txt
+            echo "" >> /tmp/commit_message.txt
+          fi
+
+          # Add theme installations
+          if [ -f /tmp/themes_installed.txt ] && [ -s /tmp/themes_installed.txt ]; then
+            echo "Themes installed:" >> /tmp/commit_message.txt
+            while read line; do
+              echo "  - $line" >> /tmp/commit_message.txt
+            done < /tmp/themes_installed.txt
+            echo "" >> /tmp/commit_message.txt
+          fi
+
+          # Add theme updates
+          if [ -f /tmp/themes_updated.txt ] && [ -s /tmp/themes_updated.txt ]; then
+            echo "Themes updated:" >> /tmp/commit_message.txt
+            while read line; do
+              echo "  - $line" >> /tmp/commit_message.txt
+            done < /tmp/themes_updated.txt
+            echo "" >> /tmp/commit_message.txt
+          fi
+
+          # Add plugin activations
+          if [ -f /tmp/plugins_activated.txt ] && [ -s /tmp/plugins_activated.txt ]; then
+            echo "Plugins activated:" >> /tmp/commit_message.txt
+            while read line; do
+              echo "  - $line" >> /tmp/commit_message.txt
+            done < /tmp/plugins_activated.txt
+            echo "" >> /tmp/commit_message.txt
+          fi
+
+          # Add plugin deactivations
+          if [ -f /tmp/plugins_deactivated.txt ] && [ -s /tmp/plugins_deactivated.txt ]; then
+            echo "Plugins deactivated:" >> /tmp/commit_message.txt
+            while read line; do
+              echo "  - $line" >> /tmp/commit_message.txt
+            done < /tmp/plugins_deactivated.txt
+            echo "" >> /tmp/commit_message.txt
+          fi
+
+          # Show commit message
+          echo "Commit message:"
+          cat /tmp/commit_message.txt
+
+          # Commit with detailed message
+          terminus env:commit "$SITE_NAME.dev" --message="$(cat /tmp/commit_message.txt)" || echo "⚠️ No changes to commit or commit failed"
 
       - name: Switch dev back to Git mode
         if: always()
@@ -451,12 +578,102 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## ✅ Sync Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Actions performed:** ${{ steps.compare.outputs.total_actions }}" >> $GITHUB_STEP_SUMMARY
+
+          # Count successful changes
+          WP_CHANGED=0
+          PLUGINS_INSTALLED=0
+          PLUGINS_UPDATED=0
+          PLUGINS_ACTIVATED=0
+          PLUGINS_DEACTIVATED=0
+          THEMES_INSTALLED=0
+          THEMES_UPDATED=0
+
+          [ -f /tmp/changes_made.txt ] && [ -s /tmp/changes_made.txt ] && WP_CHANGED=1
+          [ -f /tmp/plugins_installed.txt ] && PLUGINS_INSTALLED=$(wc -l < /tmp/plugins_installed.txt | xargs)
+          [ -f /tmp/plugins_updated.txt ] && PLUGINS_UPDATED=$(wc -l < /tmp/plugins_updated.txt | xargs)
+          [ -f /tmp/plugins_activated.txt ] && PLUGINS_ACTIVATED=$(wc -l < /tmp/plugins_activated.txt | xargs)
+          [ -f /tmp/plugins_deactivated.txt ] && PLUGINS_DEACTIVATED=$(wc -l < /tmp/plugins_deactivated.txt | xargs)
+          [ -f /tmp/themes_installed.txt ] && THEMES_INSTALLED=$(wc -l < /tmp/themes_installed.txt | xargs)
+          [ -f /tmp/themes_updated.txt ] && THEMES_UPDATED=$(wc -l < /tmp/themes_updated.txt | xargs)
+
+          TOTAL_CHANGES=$((WP_CHANGED + PLUGINS_INSTALLED + PLUGINS_UPDATED + PLUGINS_ACTIVATED + PLUGINS_DEACTIVATED + THEMES_INSTALLED + THEMES_UPDATED))
+
+          echo "**Actions planned:** ${{ steps.compare.outputs.total_actions }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Changes applied:** $TOTAL_CHANGES" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Show what was actually changed
+          if [ "$TOTAL_CHANGES" -gt 0 ]; then
+            echo "### 🔄 Changes Applied" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            # WordPress Core
+            if [ -f /tmp/changes_made.txt ] && [ -s /tmp/changes_made.txt ]; then
+              echo "**WordPress Core:**" >> $GITHUB_STEP_SUMMARY
+              cat /tmp/changes_made.txt | sed 's/^/- ✅ /' >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
+
+            # Plugins installed
+            if [ "$PLUGINS_INSTALLED" -gt 0 ]; then
+              echo "**Plugins Installed ($PLUGINS_INSTALLED):**" >> $GITHUB_STEP_SUMMARY
+              while read line; do
+                echo "- ✅ $line" >> $GITHUB_STEP_SUMMARY
+              done < /tmp/plugins_installed.txt
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
+
+            # Plugins updated
+            if [ "$PLUGINS_UPDATED" -gt 0 ]; then
+              echo "**Plugins Updated ($PLUGINS_UPDATED):**" >> $GITHUB_STEP_SUMMARY
+              while read line; do
+                echo "- ✅ $line" >> $GITHUB_STEP_SUMMARY
+              done < /tmp/plugins_updated.txt
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
+
+            # Themes installed
+            if [ "$THEMES_INSTALLED" -gt 0 ]; then
+              echo "**Themes Installed ($THEMES_INSTALLED):**" >> $GITHUB_STEP_SUMMARY
+              while read line; do
+                echo "- ✅ $line" >> $GITHUB_STEP_SUMMARY
+              done < /tmp/themes_installed.txt
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
+
+            # Themes updated
+            if [ "$THEMES_UPDATED" -gt 0 ]; then
+              echo "**Themes Updated ($THEMES_UPDATED):**" >> $GITHUB_STEP_SUMMARY
+              while read line; do
+                echo "- ✅ $line" >> $GITHUB_STEP_SUMMARY
+              done < /tmp/themes_updated.txt
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
+
+            # Plugins activated
+            if [ "$PLUGINS_ACTIVATED" -gt 0 ]; then
+              echo "**Plugins Activated ($PLUGINS_ACTIVATED):**" >> $GITHUB_STEP_SUMMARY
+              while read line; do
+                echo "- ✅ $line" >> $GITHUB_STEP_SUMMARY
+              done < /tmp/plugins_activated.txt
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
+
+            # Plugins deactivated
+            if [ "$PLUGINS_DEACTIVATED" -gt 0 ]; then
+              echo "**Plugins Deactivated ($PLUGINS_DEACTIVATED):**" >> $GITHUB_STEP_SUMMARY
+              while read line; do
+                echo "- ✅ $line" >> $GITHUB_STEP_SUMMARY
+              done < /tmp/plugins_deactivated.txt
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "ℹ️ **No changes applied** - Either everything was already up to date or all updates failed." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Committed to dev:** ${{ github.event.inputs.commit_changes }}" >> $GITHUB_STEP_SUMMARY
           echo "**Deployed to test:** ${{ github.event.inputs.deploy_to_test }}" >> $GITHUB_STEP_SUMMARY
           echo "**Deployed to live:** ${{ github.event.inputs.deploy_to_live }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          if [ "${{ steps.compare.outputs.total_actions }}" = "0" ]; then
-            echo "ℹ️ **No changes needed** - Pantheon dev is already up to date with manifest!" >> $GITHUB_STEP_SUMMARY
-          fi
