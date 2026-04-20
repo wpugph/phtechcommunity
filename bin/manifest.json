@@ -2,7 +2,7 @@
   "pantheon": {
     "site_name": "eventsph",
     "site_id": "4bf58ee6-abd8-47c2-a6c9-f839ae0aa50c",
-    "last_sync": "2026-04-20T19:31:08Z"
+    "last_sync": "2026-04-20T19:55:47Z"
   },
   "environments": {
     "dev": {
@@ -21,7 +21,7 @@
       },
       "active_theme": "astra",
       "multisite": false,
-      "last_updated": "2026-04-20T19:31:08Z"
+      "last_updated": "2026-04-20T19:55:47Z"
     },
     "test": {},
     "live": {},
