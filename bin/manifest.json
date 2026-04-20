@@ -1,48 +1,51 @@
 {
   "pantheon": {
-    "site_name": "your-site-name",
-    "site_id": "",
-    "last_sync": ""
+    "site_name": "eventsph",
+    "site_id": "4bf58ee6-abd8-47c2-a6c9-f839ae0aa50c",
+    "last_sync": "2026-04-20T07:35:00Z"
   },
   "environments": {
     "dev": {
       "wordpress": {
-        "version": "",
-        "db_version": ""
+        "version": "6.8.3",
+        "db_version": "unknown"
       },
-      "php_version": "",
+      "php_version": "8.2",
       "plugins": {},
       "themes": {},
       "mu_plugins": {},
       "active_theme": "",
       "multisite": false,
-      "last_updated": ""
+      "last_updated": "2026-04-20T07:35:00Z",
+      "note": "⚠️ Site has critical error - duplicate MU plugins preventing full sync. Fix required: Remove /wp-content/mu-plugins/pantheon/ directory (old duplicate)"
     },
     "test": {
       "wordpress": {
-        "version": "",
-        "db_version": ""
+        "version": "unknown",
+        "db_version": "unknown"
       },
-      "php_version": "",
+      "php_version": "7.4",
       "plugins": {},
       "themes": {},
       "mu_plugins": {},
       "active_theme": "",
       "multisite": false,
-      "last_updated": ""
+      "last_updated": "2026-04-20T07:35:00Z",
+      "note": "⚠️ Partial sync - site error preventing WP-CLI access"
     },
     "live": {
       "wordpress": {
-        "version": "",
-        "db_version": ""
+        "version": "unknown",
+        "db_version": "unknown"
       },
-      "php_version": "",
+      "php_version": "7.4",
       "plugins": {},
       "themes": {},
       "mu_plugins": {},
       "active_theme": "",
       "multisite": false,
-      "last_updated": ""
+      "last_updated": "2026-04-20T07:35:00Z",
+      "note": "⚠️ Partial sync - site error preventing WP-CLI access"
     },
     "multidevs": {}
   }

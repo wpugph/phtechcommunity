@@ -1,0 +1,202 @@
+name: Sync Manifest from Pantheon
+
+on:
+  workflow_dispatch:
+    inputs:
+      environments:
+        description: 'Environments to sync (comma-separated: dev,test,live or "all")'
+        required: false
+        default: 'all'
+        type: string
+  schedule:
+    # Run weekly on Mondays at 9am UTC
+    - cron: '0 9 * * 1'
+
+jobs:
+  sync-manifest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install dependencies
+        run: |
+          # Install Terminus
+          mkdir -p $HOME/.terminus
+          curl -L https://github.com/pantheon-systems/terminus/releases/download/3.5.0/terminus.phar -o /usr/local/bin/terminus
+          chmod +x /usr/local/bin/terminus
+
+          # Install jq
+          sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Authenticate with Pantheon
+        env:
+          TERMINUS_TOKEN: ${{ secrets.PANTHEON_MACHINE_TOKEN }}
+        run: |
+          terminus auth:login --machine-token="$TERMINUS_TOKEN"
+
+      - name: Sync manifest from Pantheon
+        env:
+          SITE_NAME: ${{ secrets.PANTHEON_SITE_NAME }}
+          SYNC_ENVS: ${{ github.event.inputs.environments || 'all' }}
+        run: |
+          echo "🔄 Syncing manifest from Pantheon..."
+
+          # Get site UUID
+          SITE_UUID=$(terminus site:info "$SITE_NAME" --field=id)
+
+          # Initialize manifest
+          cat > bin/manifest.json <<EOF
+          {
+            "pantheon": {
+              "site_name": "$SITE_NAME",
+              "site_id": "$SITE_UUID",
+              "last_sync": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+            },
+            "environments": {
+              "dev": {},
+              "test": {},
+              "live": {},
+              "multidevs": {}
+            }
+          }
+          EOF
+
+          # Function to get environment data
+          get_env_data() {
+            local ENV=$1
+            echo "→ Fetching $ENV environment..."
+
+            # Wake environment
+            terminus env:wake "$SITE_NAME.$ENV" &> /dev/null || true
+            sleep 2
+
+            # Get versions (with error handling)
+            WP_VERSION=$(terminus wp "$SITE_NAME.$ENV" -- core version 2>/dev/null | grep -v "^\[" | grep -v "^Command:" | grep -E "^[0-9]" || echo "unknown")
+            PHP_VERSION=$(terminus env:info "$SITE_NAME.$ENV" --field=php_version 2>/dev/null || echo "unknown")
+
+            # Get plugins (filter Terminus output noise)
+            PLUGINS_JSON=$(terminus wp "$SITE_NAME.$ENV" -- plugin list --format=json 2>/dev/null | grep -v "^\[" | grep -v "^Command:" | grep -v "^Fatal" | grep "^\[" || echo "[]")
+
+            # Get themes (filter Terminus output noise)
+            THEMES_JSON=$(terminus wp "$SITE_NAME.$ENV" -- theme list --format=json 2>/dev/null | grep -v "^\[" | grep -v "^Command:" | grep -v "^Fatal" | grep "^\[" || echo "[]")
+
+            # Get active theme
+            ACTIVE_THEME=$(terminus wp "$SITE_NAME.$ENV" -- theme list --status=active --field=name 2>/dev/null | grep -v "^\[" | grep -v "^Command:" | grep -v "^Fatal" | head -1 || echo "unknown")
+
+            # Get multisite status
+            IS_MULTISITE=$(terminus wp "$SITE_NAME.$ENV" -- eval 'echo is_multisite() ? "true" : "false";' 2>/dev/null | grep -v "^\[" | grep -v "^Command:" | grep -E "^(true|false)" || echo "false")
+
+            # Build JSON
+            cat <<ENVEOF
+          {
+            "wordpress": {
+              "version": "$WP_VERSION",
+              "db_version": "unknown"
+            },
+            "php_version": "$PHP_VERSION",
+            "plugins": $(echo "$PLUGINS_JSON" | jq 'map({(.name): {version: .version, status: .status, update: .update, update_version: .update_version}}) | add // {}' 2>/dev/null || echo "{}"),
+            "themes": $(echo "$THEMES_JSON" | jq 'map({(.name): {version: .version, status: .status, update: .update}}) | add // {}' 2>/dev/null || echo "{}"),
+            "mu_plugins": {},
+            "active_theme": "$ACTIVE_THEME",
+            "multisite": $IS_MULTISITE,
+            "last_updated": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          }
+          ENVEOF
+          }
+
+          # Determine which environments to sync
+          if [ "$SYNC_ENVS" = "all" ]; then
+            ENVS_TO_SYNC="dev test live"
+          else
+            ENVS_TO_SYNC=$(echo "$SYNC_ENVS" | tr ',' ' ')
+          fi
+
+          # Sync each environment
+          for ENV in $ENVS_TO_SYNC; do
+            if [ "$ENV" = "dev" ] || [ "$ENV" = "test" ] || [ "$ENV" = "live" ]; then
+              ENV_DATA=$(get_env_data "$ENV")
+              jq --argjson data "$ENV_DATA" ".environments.$ENV = \$data" bin/manifest.json > bin/manifest.json.tmp
+              mv bin/manifest.json.tmp bin/manifest.json
+            fi
+          done
+
+          # Get multidevs
+          echo "→ Checking for multidev environments..."
+          MULTIDEVS=$(terminus multidev:list "$SITE_NAME" --format=json 2>/dev/null || echo "[]")
+          MULTIDEV_COUNT=$(echo "$MULTIDEVS" | jq 'length')
+
+          if [ "$MULTIDEV_COUNT" -gt 0 ]; then
+            echo "  Found $MULTIDEV_COUNT multidev(s)"
+            echo "$MULTIDEVS" | jq -r '.[].id' | while read -r MULTIDEV_NAME; do
+              MULTIDEV_DATA=$(get_env_data "$MULTIDEV_NAME")
+              jq --arg name "$MULTIDEV_NAME" --argjson data "$MULTIDEV_DATA" \
+                ".environments.multidevs[\$name] = \$data" bin/manifest.json > bin/manifest.json.tmp
+              mv bin/manifest.json.tmp bin/manifest.json
+            done
+          fi
+
+          # Pretty print
+          jq '.' bin/manifest.json > bin/manifest.json.tmp
+          mv bin/manifest.json.tmp bin/manifest.json
+
+          echo "✅ Manifest synced successfully!"
+
+      - name: Check for changes
+        id: check_changes
+        run: |
+          if git diff --quiet bin/manifest.json; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "ℹ️  No changes detected in manifest"
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "✨ Changes detected in manifest"
+          fi
+
+      - name: Commit and push changes
+        if: steps.check_changes.outputs.changed == 'true'
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+
+          git add bin/manifest.json
+
+          # Create commit message with summary
+          cat > /tmp/commit-msg.txt <<EOF
+          Update manifest from Pantheon
+
+          Synced environments: ${{ github.event.inputs.environments || 'all' }}
+
+          Changes:
+          $(git diff --cached bin/manifest.json | grep -E '^\+.*"version"' | head -10 || echo "  - Environment state updated")
+
+          🤖 Auto-synced by GitHub Actions
+          EOF
+
+          git commit -F /tmp/commit-msg.txt
+          git push
+
+      - name: Summary
+        run: |
+          echo "## 📊 Manifest Sync Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Site:** ${{ secrets.PANTHEON_SITE_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Environments:** ${{ github.event.inputs.environments || 'all' }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Timestamp:** $(date -u)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.check_changes.outputs.changed }}" = "true" ]; then
+            echo "✅ **Manifest updated and committed**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "ℹ️  **No changes detected**" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Environment Versions" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
+          jq '.environments | to_entries | map({(.key): .value.wordpress.version}) | add' bin/manifest.json >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
