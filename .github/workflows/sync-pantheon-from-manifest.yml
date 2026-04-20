@@ -476,15 +476,16 @@ jobs:
             echo "  Installing ${slug} ${version}..."
 
             # Use --force to ensure it installs even if already present
-            # This handles the case where comparison failed but plugin exists
-            if terminus wp "$SITE_NAME.dev" -- plugin install "$slug" --version="$version" --force; then
+            # Redirect stdin to prevent terminus from consuming the while loop input
+            if terminus wp "$SITE_NAME.dev" -- plugin install "$slug" --version="$version" --force </dev/null; then
               echo "$slug $version" >> /tmp/plugins_installed.txt
-              [ "$status" = "active" ] && terminus wp "$SITE_NAME.dev" -- plugin activate "$slug" 2>/dev/null || true
+              [ "$status" = "active" ] && terminus wp "$SITE_NAME.dev" -- plugin activate "$slug" </dev/null 2>/dev/null || true
               echo "  ✅ Installed: $slug $version"
             else
               echo "  ❌ Failed to install $slug"
             fi
           done < /tmp/plugins_to_install.txt
+          echo "Finished installing plugins. Total: $(wc -l < /tmp/plugins_installed.txt | xargs)"
 
       - name: Update existing plugins
         if: fromJSON(steps.compare.outputs.plugins_update_count) > 0
@@ -512,16 +513,17 @@ jobs:
             echo "  Changing ${slug}: ${current_version} → ${version}..."
 
             # For version changes (upgrade or downgrade), we use install with --force and specific version
+            # Redirect stdin to prevent terminus from consuming the while loop input
             echo "  Running: terminus wp $SITE_NAME.dev -- plugin install $slug --version=$version --force"
-            if terminus wp "$SITE_NAME.dev" -- plugin install "$slug" --version="$version" --force; then
+            if terminus wp "$SITE_NAME.dev" -- plugin install "$slug" --version="$version" --force </dev/null; then
               echo "$slug: $current_version → $version" >> /tmp/plugins_updated.txt
               # Apply activation status from manifest
               if [ "$status" = "active" ]; then
                 echo "  Activating $slug..."
-                terminus wp "$SITE_NAME.dev" -- plugin activate "$slug" 2>/dev/null || echo "  ⚠️ Activation failed"
+                terminus wp "$SITE_NAME.dev" -- plugin activate "$slug" </dev/null 2>/dev/null || echo "  ⚠️ Activation failed"
               elif [ "$status" = "inactive" ]; then
                 echo "  Deactivating $slug..."
-                terminus wp "$SITE_NAME.dev" -- plugin deactivate "$slug" 2>/dev/null || echo "  ⚠️ Deactivation failed"
+                terminus wp "$SITE_NAME.dev" -- plugin deactivate "$slug" </dev/null 2>/dev/null || echo "  ⚠️ Deactivation failed"
               fi
               echo "  ✅ Changed: $slug $current_version → $version"
             else
@@ -547,13 +549,14 @@ jobs:
           while read -r slug; do
             [ -z "$slug" ] && continue
             echo "  Activating $slug..."
-            if terminus wp "$SITE_NAME.dev" -- plugin activate "$slug"; then
+            if terminus wp "$SITE_NAME.dev" -- plugin activate "$slug" </dev/null; then
               echo "$slug" >> /tmp/plugins_activated.txt
               echo "  ✅ Activated: $slug"
             else
               echo "  ❌ Failed to activate $slug"
             fi
           done < /tmp/plugins_to_activate.txt
+          echo "Total activated: $(wc -l < /tmp/plugins_activated.txt | xargs)"
 
       - name: Deactivate plugins
         if: fromJSON(steps.compare.outputs.plugins_deactivate_count) > 0
@@ -569,13 +572,14 @@ jobs:
           while read -r slug; do
             [ -z "$slug" ] && continue
             echo "  Deactivating $slug..."
-            if terminus wp "$SITE_NAME.dev" -- plugin deactivate "$slug"; then
+            if terminus wp "$SITE_NAME.dev" -- plugin deactivate "$slug" </dev/null; then
               echo "$slug" >> /tmp/plugins_deactivated.txt
               echo "  ✅ Deactivated: $slug"
             else
               echo "  ❌ Failed to deactivate $slug"
             fi
           done < /tmp/plugins_to_deactivate.txt
+          echo "Total deactivated: $(wc -l < /tmp/plugins_deactivated.txt | xargs)"
 
       - name: Uninstall plugins not in manifest
         if: fromJSON(steps.compare.outputs.plugins_uninstall_count) > 0
@@ -593,10 +597,10 @@ jobs:
             echo "  Uninstalling ${slug} ${version}..."
             # Deactivate first if active
             echo "  Deactivating if needed..."
-            terminus wp "$SITE_NAME.dev" -- plugin deactivate "$slug" 2>/dev/null || echo "  (not active or already deactivated)"
+            terminus wp "$SITE_NAME.dev" -- plugin deactivate "$slug" </dev/null 2>/dev/null || echo "  (not active or already deactivated)"
             # Then uninstall
             echo "  Running uninstall..."
-            if terminus wp "$SITE_NAME.dev" -- plugin uninstall "$slug" --deactivate; then
+            if terminus wp "$SITE_NAME.dev" -- plugin uninstall "$slug" --deactivate </dev/null; then
               echo "$slug $version" >> /tmp/plugins_uninstalled.txt
               echo "  ✅ Uninstalled: $slug $version"
             else
@@ -604,6 +608,7 @@ jobs:
             fi
             echo ""
           done < /tmp/plugins_to_uninstall.txt
+          echo "Total uninstalled: $(wc -l < /tmp/plugins_uninstalled.txt | xargs)"
 
       - name: Install new themes
         if: fromJSON(steps.compare.outputs.themes_install_count) > 0
@@ -615,13 +620,14 @@ jobs:
           while IFS='|' read -r slug version; do
             [ -z "$slug" ] && continue
             echo "  Installing ${slug} ${version}..."
-            if terminus wp "$SITE_NAME.dev" -- theme install "$slug" --version="$version"; then
+            if terminus wp "$SITE_NAME.dev" -- theme install "$slug" --version="$version" </dev/null; then
               echo "$slug $version" >> /tmp/themes_installed.txt
               echo "  ✅ Installed: $slug $version"
             else
               echo "  ❌ Failed to install $slug"
             fi
           done < /tmp/themes_to_install.txt
+          echo "Total installed: $(wc -l < /tmp/themes_installed.txt | xargs)"
 
       - name: Update existing themes
         if: fromJSON(steps.compare.outputs.themes_update_count) > 0
@@ -633,14 +639,15 @@ jobs:
           while IFS='|' read -r slug version current_version; do
             [ -z "$slug" ] && continue
             echo "  Updating ${slug}: ${current_version} → ${version}..."
-            if terminus wp "$SITE_NAME.dev" -- theme update "$slug" --version="$version" || \
-               terminus wp "$SITE_NAME.dev" -- theme install "$slug" --version="$version" --force; then
+            if terminus wp "$SITE_NAME.dev" -- theme update "$slug" --version="$version" </dev/null || \
+               terminus wp "$SITE_NAME.dev" -- theme install "$slug" --version="$version" --force </dev/null; then
               echo "$slug: $current_version → $version" >> /tmp/themes_updated.txt
               echo "  ✅ Updated: $slug $current_version → $version"
             else
               echo "  ❌ Failed to update $slug"
             fi
           done < /tmp/themes_to_update.txt
+          echo "Total updated: $(wc -l < /tmp/themes_updated.txt | xargs)"
 
       - name: Activate theme
         if: steps.compare.outputs.theme_current != steps.compare.outputs.theme_target
@@ -649,7 +656,7 @@ jobs:
           THEME_TARGET: ${{ steps.compare.outputs.theme_target }}
         run: |
           echo "Activating theme: $THEME_TARGET"
-          terminus wp "$SITE_NAME.dev" -- theme activate "$THEME_TARGET" || echo "⚠️ Could not activate theme"
+          terminus wp "$SITE_NAME.dev" -- theme activate "$THEME_TARGET" </dev/null || echo "⚠️ Could not activate theme"
 
       - name: Commit changes to Pantheon dev
         if: github.event.inputs.commit_changes == 'true' && fromJSON(steps.compare.outputs.total_actions) > 0
