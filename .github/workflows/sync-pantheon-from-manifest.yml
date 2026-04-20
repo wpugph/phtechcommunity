@@ -147,9 +147,13 @@ jobs:
           WP_TARGET=$(jq -r ".environments.$SOURCE_ENV.wordpress.version // \"unknown\"" bin/manifest.json)
           THEME_TARGET=$(jq -r ".environments.$SOURCE_ENV.active_theme // \"unknown\"" bin/manifest.json)
 
-          # Get current versions from Pantheon dev
-          WP_CURRENT=$(terminus wp "$SITE_NAME.dev" -- core version 2>&1 | grep -E "^[0-9]+\.[0-9]+" | head -1 || echo "unknown")
-          THEME_CURRENT=$(terminus wp "$SITE_NAME.dev" -- theme list --status=active --field=name 2>&1 | grep -v "^\[" | grep -v "^Command:" | grep -v "^Notice:" | head -1 || echo "unknown")
+          # Get current WordPress version
+          terminus wp "$SITE_NAME.dev" -- core version > /tmp/wp_version.txt 2>&1
+          WP_CURRENT=$(cat /tmp/wp_version.txt | grep -oE "^[0-9]+\.[0-9]+(\.[0-9]+)?" | head -1 || echo "unknown")
+
+          # Get current active theme
+          terminus wp "$SITE_NAME.dev" -- theme list --status=active --field=name > /tmp/active_theme.txt 2>&1
+          THEME_CURRENT=$(cat /tmp/active_theme.txt | grep -v "^\[" | grep -v "^Command:" | grep -v "^Notice:" | grep -v "^Warning:" | head -1 || echo "unknown")
 
           # Debug output
           echo "WordPress - Target: $WP_TARGET, Current: $WP_CURRENT"
@@ -171,22 +175,42 @@ jobs:
           jq -r ".environments.$SOURCE_ENV.plugins | to_entries[] | \"\(.key)|\(.value.version)|\(.value.status)\"" bin/manifest.json > /tmp/manifest_plugins.txt
 
           # Get current plugins from Pantheon dev
-          # Capture full output, then extract JSON with jq
+          echo "Fetching current plugin list from Pantheon dev..."
           terminus wp "$SITE_NAME.dev" -- plugin list --format=json > /tmp/plugin_raw.txt 2>&1
 
-          # Extract and parse JSON (jq will find the JSON array in the output)
-          cat /tmp/plugin_raw.txt | jq -r '.[]? | "\(.name)|\(.version)|\(.status)"' > /tmp/current_plugins.txt 2>/dev/null || echo "" > /tmp/current_plugins.txt
+          # Extract and parse JSON
+          # Use jq to parse, handling both array and object responses
+          if cat /tmp/plugin_raw.txt | jq -e '. | type' >/dev/null 2>&1; then
+            cat /tmp/plugin_raw.txt | jq -r 'if type == "array" then .[] else . end | "\(.name)|\(.version)|\(.status)"' > /tmp/current_plugins.txt 2>/dev/null || echo "" > /tmp/current_plugins.txt
+          else
+            echo "" > /tmp/current_plugins.txt
+          fi
 
           # Debug: show what we got
-          echo "Plugins in manifest: $(wc -l < /tmp/manifest_plugins.txt)"
-          echo "Plugins in dev: $(wc -l < /tmp/current_plugins.txt)"
+          echo ""
+          echo "=== DEBUG: Plugin Comparison ==="
+          echo "Plugins in manifest ($SOURCE_ENV): $(wc -l < /tmp/manifest_plugins.txt | xargs)"
+          echo "Plugins currently in dev: $(wc -l < /tmp/current_plugins.txt | xargs)"
+          echo ""
+
           if [ ! -s /tmp/current_plugins.txt ]; then
-            echo "⚠️  Warning: No plugins found in dev. Raw output:"
-            cat /tmp/plugin_raw.txt | head -20
-          else
-            echo "Sample current plugins:"
-            head -5 /tmp/current_plugins.txt
+            echo "❌ ERROR: No plugins found in dev!"
+            echo "Raw terminus output:"
+            cat /tmp/plugin_raw.txt
+            echo ""
+            echo "Trying alternative method..."
+            # Try CSV format as fallback
+            terminus wp "$SITE_NAME.dev" -- plugin list --format=csv 2>&1 | tail -n +2 | awk -F',' '{print $1"|"$4"|"$2}' > /tmp/current_plugins.txt || echo "" > /tmp/current_plugins.txt
+            echo "Plugins after CSV parse: $(wc -l < /tmp/current_plugins.txt | xargs)"
           fi
+
+          echo "First 5 manifest plugins:"
+          head -5 /tmp/manifest_plugins.txt || echo "  (none)"
+          echo ""
+          echo "First 5 current plugins:"
+          head -5 /tmp/current_plugins.txt || echo "  (none)"
+          echo "================================"
+          echo ""
 
           # Compare and build action lists
           > /tmp/plugins_to_install.txt
@@ -194,30 +218,49 @@ jobs:
           > /tmp/plugins_to_activate.txt
           > /tmp/plugins_to_deactivate.txt
 
+          # Sanity check before comparison
+          if [ ! -f /tmp/manifest_plugins.txt ] || [ ! -s /tmp/manifest_plugins.txt ]; then
+            echo "❌ ERROR: Manifest plugins list is empty!"
+            exit 1
+          fi
+
+          if [ ! -f /tmp/current_plugins.txt ] || [ ! -s /tmp/current_plugins.txt ]; then
+            echo "⚠️  WARNING: Current plugins list is empty - will treat all as new installs"
+          fi
+
+          echo "Comparing plugins..."
           while IFS='|' read -r slug version status; do
             # Skip excluded plugins
             if echo "$EXCLUDED" | grep -qE "(^|\\|)${slug}(\\||$)"; then
+              echo "  Skipping excluded: $slug"
               continue
             fi
 
-            current_line=$(grep "^${slug}|" /tmp/current_plugins.txt || echo "")
+            current_line=$(grep "^${slug}|" /tmp/current_plugins.txt 2>/dev/null || echo "")
 
             if [ -z "$current_line" ]; then
               # Plugin not installed
+              echo "  → Install: $slug $version (not found in dev)"
               echo "${slug}|${version}|${status}" >> /tmp/plugins_to_install.txt
             else
               current_version=$(echo "$current_line" | cut -d'|' -f2)
               current_status=$(echo "$current_line" | cut -d'|' -f3)
 
               if [ "$FORCE" = "true" ] || [ "$current_version" != "$version" ]; then
+                echo "  → Update: $slug $current_version → $version"
                 echo "${slug}|${version}|${status}" >> /tmp/plugins_to_update.txt
               elif [ "$status" = "active" ] && [ "$current_status" != "active" ]; then
+                echo "  → Activate: $slug"
                 echo "$slug" >> /tmp/plugins_to_activate.txt
               elif [ "$status" = "inactive" ] && [ "$current_status" = "active" ]; then
+                echo "  → Deactivate: $slug"
                 echo "$slug" >> /tmp/plugins_to_deactivate.txt
+              else
+                echo "  ✓ OK: $slug $version (matches)"
               fi
             fi
           done < /tmp/manifest_plugins.txt
+          echo ""
 
           # Get themes from manifest and current state
           jq -r ".environments.$SOURCE_ENV.themes | to_entries[] | \"\(.key)|\(.value.version)\"" bin/manifest.json > /tmp/manifest_themes.txt || echo "" > /tmp/manifest_themes.txt
@@ -391,7 +434,10 @@ jobs:
           while IFS='|' read -r slug version status; do
             [ -z "$slug" ] && continue
             echo "  Installing ${slug} ${version}..."
-            if terminus wp "$SITE_NAME.dev" -- plugin install "$slug" --version="$version"; then
+
+            # Use --force to ensure it installs even if already present
+            # This handles the case where comparison failed but plugin exists
+            if terminus wp "$SITE_NAME.dev" -- plugin install "$slug" --version="$version" --force; then
               echo "$slug $version" >> /tmp/plugins_installed.txt
               [ "$status" = "active" ] && terminus wp "$SITE_NAME.dev" -- plugin activate "$slug" 2>/dev/null || true
               echo "  ✅ Installed: $slug $version"
