@@ -138,6 +138,7 @@ PLUGINS_TO_INSTALL=()
 PLUGINS_TO_UPDATE=()
 PLUGINS_TO_ACTIVATE=()
 PLUGINS_TO_DEACTIVATE=()
+PLUGINS_TO_UNINSTALL=()
 PLUGINS_SKIPPED=0
 THEMES_TO_INSTALL=()
 THEMES_TO_UPDATE=()
@@ -171,7 +172,8 @@ if [ "$PLUGIN_COUNT" -gt 0 ]; then
         if [ "$INSTALLED_VERSION" = "not-installed" ]; then
             PLUGINS_TO_INSTALL+=("$PLUGIN_SLUG|$PLUGIN_VERSION|$PLUGIN_STATUS")
         elif [ "$INSTALLED_VERSION" != "$PLUGIN_VERSION" ] || [ "$FORCE" = true ]; then
-            PLUGINS_TO_UPDATE+=("$PLUGIN_SLUG|$PLUGIN_VERSION|$PLUGIN_STATUS")
+            # Store current version to show upgrade/downgrade direction
+            PLUGINS_TO_UPDATE+=("$PLUGIN_SLUG|$PLUGIN_VERSION|$INSTALLED_VERSION|$PLUGIN_STATUS")
         else
             # Check activation status
             if [ "$PLUGIN_STATUS" = "active" ] && [ "$INSTALLED_STATUS" != "active" ]; then
@@ -182,6 +184,20 @@ if [ "$PLUGIN_COUNT" -gt 0 ]; then
         fi
     done < <(echo "$ENV_DATA" | jq -r '.plugins | to_entries[] | "\(.key)|\(.value.version)|\(.value.status)"')
 fi
+
+# Check for plugins installed locally that are NOT in the manifest (should be uninstalled)
+while read -r INSTALLED_PLUGIN; do
+    # Skip if plugin is in exclusion list
+    if echo "$EXCLUDED_ITEMS" | grep -q "^${INSTALLED_PLUGIN}$"; then
+        continue
+    fi
+
+    # Check if this plugin exists in the manifest
+    if ! echo "$ENV_DATA" | jq -e ".plugins | has(\"$INSTALLED_PLUGIN\")" > /dev/null 2>&1; then
+        PLUGIN_VERSION=$(wp plugin get "$INSTALLED_PLUGIN" --field=version 2>/dev/null || echo "unknown")
+        PLUGINS_TO_UNINSTALL+=("$INSTALLED_PLUGIN|$PLUGIN_VERSION")
+    fi
+done < <(wp plugin list --field=name 2>/dev/null || echo "")
 
 # Check themes
 if [ "$THEME_COUNT" -gt 0 ]; then
@@ -212,7 +228,7 @@ fi
 TOTAL_ACTIONS=0
 [ "$WP_ACTION" != "" ] && [ "$WP_ACTION" != "skip" ] && TOTAL_ACTIONS=$((TOTAL_ACTIONS + 1))
 TOTAL_ACTIONS=$((TOTAL_ACTIONS + ${#PLUGINS_TO_INSTALL[@]} + ${#PLUGINS_TO_UPDATE[@]}))
-TOTAL_ACTIONS=$((TOTAL_ACTIONS + ${#PLUGINS_TO_ACTIVATE[@]} + ${#PLUGINS_TO_DEACTIVATE[@]}))
+TOTAL_ACTIONS=$((TOTAL_ACTIONS + ${#PLUGINS_TO_ACTIVATE[@]} + ${#PLUGINS_TO_DEACTIVATE[@]} + ${#PLUGINS_TO_UNINSTALL[@]}))
 TOTAL_ACTIONS=$((TOTAL_ACTIONS + ${#THEMES_TO_INSTALL[@]} + ${#THEMES_TO_UPDATE[@]}))
 [ -n "$THEME_TO_ACTIVATE" ] && TOTAL_ACTIONS=$((TOTAL_ACTIONS + 1))
 
@@ -247,11 +263,11 @@ if [ ${#PLUGINS_TO_INSTALL[@]} -gt 0 ]; then
     done
 fi
 if [ ${#PLUGINS_TO_UPDATE[@]} -gt 0 ]; then
-    echo -e "  ${CYAN}Update (${#PLUGINS_TO_UPDATE[@]}):${NC}"
+    echo -e "  ${CYAN}Update/Downgrade (${#PLUGINS_TO_UPDATE[@]}):${NC}"
     for plugin in "${PLUGINS_TO_UPDATE[@]}"; do
         SLUG=$(echo "$plugin" | cut -d'|' -f1)
         VERSION=$(echo "$plugin" | cut -d'|' -f2)
-        CURRENT=$(wp plugin get "$SLUG" --field=version 2>/dev/null)
+        CURRENT=$(echo "$plugin" | cut -d'|' -f3)
         echo -e "    • $SLUG ($CURRENT → $VERSION)"
     done
 fi
@@ -260,6 +276,14 @@ if [ ${#PLUGINS_TO_ACTIVATE[@]} -gt 0 ]; then
 fi
 if [ ${#PLUGINS_TO_DEACTIVATE[@]} -gt 0 ]; then
     echo -e "  ${CYAN}Deactivate (${#PLUGINS_TO_DEACTIVATE[@]}):${NC} ${PLUGINS_TO_DEACTIVATE[*]}"
+fi
+if [ ${#PLUGINS_TO_UNINSTALL[@]} -gt 0 ]; then
+    echo -e "  ${CYAN}Uninstall (${#PLUGINS_TO_UNINSTALL[@]}) - not in manifest:${NC}"
+    for plugin in "${PLUGINS_TO_UNINSTALL[@]}"; do
+        SLUG=$(echo "$plugin" | cut -d'|' -f1)
+        VERSION=$(echo "$plugin" | cut -d'|' -f2)
+        echo -e "    • $SLUG ($VERSION)"
+    done
 fi
 PLUGINS_UPTODATE=$((PLUGIN_COUNT - ${#PLUGINS_TO_INSTALL[@]} - ${#PLUGINS_TO_UPDATE[@]} - PLUGINS_SKIPPED))
 if [ $PLUGINS_UPTODATE -gt 0 ]; then
@@ -357,17 +381,23 @@ if [ ${#PLUGINS_TO_INSTALL[@]} -gt 0 ]; then
     echo -e "${GREEN}  ✓ Plugins installed${NC}"
 fi
 
-# Update plugins
+# Update plugins (handles both upgrades and downgrades)
 if [ ${#PLUGINS_TO_UPDATE[@]} -gt 0 ]; then
-    echo -e "${BLUE}→ Updating ${#PLUGINS_TO_UPDATE[@]} plugins...${NC}"
+    echo -e "${BLUE}→ Updating/downgrading ${#PLUGINS_TO_UPDATE[@]} plugins...${NC}"
     for plugin in "${PLUGINS_TO_UPDATE[@]}"; do
         SLUG=$(echo "$plugin" | cut -d'|' -f1)
         VERSION=$(echo "$plugin" | cut -d'|' -f2)
-        STATUS=$(echo "$plugin" | cut -d'|' -f3)
-        echo -e "  • $SLUG ($VERSION)..."
-        wp plugin update "$SLUG" --version="$VERSION" 2>/dev/null || wp plugin install "$SLUG" --version="$VERSION" --force 2>/dev/null || echo -e "    ${YELLOW}⚠ Failed${NC}"
-        [ "$STATUS" = "active" ] && wp plugin activate "$SLUG" 2>/dev/null || true
-        [ "$STATUS" = "inactive" ] && wp plugin deactivate "$SLUG" 2>/dev/null || true
+        CURRENT=$(echo "$plugin" | cut -d'|' -f3)
+        STATUS=$(echo "$plugin" | cut -d'|' -f4)
+        echo -e "  • $SLUG ($CURRENT → $VERSION)..."
+        # Use install --force to handle both upgrades and downgrades
+        wp plugin install "$SLUG" --version="$VERSION" --force 2>/dev/null || echo -e "    ${YELLOW}⚠ Failed${NC}"
+        # Apply activation status from manifest
+        if [ "$STATUS" = "active" ]; then
+            wp plugin activate "$SLUG" 2>/dev/null || true
+        elif [ "$STATUS" = "inactive" ]; then
+            wp plugin deactivate "$SLUG" 2>/dev/null || true
+        fi
     done
     echo -e "${GREEN}  ✓ Plugins updated${NC}"
 fi
@@ -388,6 +418,21 @@ if [ ${#PLUGINS_TO_DEACTIVATE[@]} -gt 0 ]; then
         wp plugin deactivate "$plugin" 2>/dev/null || echo -e "  ${YELLOW}⚠ Could not deactivate $plugin${NC}"
     done
     echo -e "${GREEN}  ✓ Plugins deactivated${NC}"
+fi
+
+# Uninstall plugins not in manifest
+if [ ${#PLUGINS_TO_UNINSTALL[@]} -gt 0 ]; then
+    echo -e "${BLUE}→ Uninstalling ${#PLUGINS_TO_UNINSTALL[@]} plugins not in manifest...${NC}"
+    for plugin in "${PLUGINS_TO_UNINSTALL[@]}"; do
+        SLUG=$(echo "$plugin" | cut -d'|' -f1)
+        VERSION=$(echo "$plugin" | cut -d'|' -f2)
+        echo -e "  • $SLUG ($VERSION)..."
+        # Deactivate first if active
+        wp plugin deactivate "$SLUG" 2>/dev/null || true
+        # Then uninstall
+        wp plugin uninstall "$SLUG" --deactivate 2>/dev/null || echo -e "    ${YELLOW}⚠ Failed${NC}"
+    done
+    echo -e "${GREEN}  ✓ Plugins uninstalled${NC}"
 fi
 
 # Install themes
