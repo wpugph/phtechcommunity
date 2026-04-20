@@ -1,0 +1,139 @@
+name: Deploy to Pantheon
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - master
+
+jobs:
+  deploy:
+    # Only run if PR was merged and approved
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for proper git operations
+
+      - name: Install Terminus
+        run: |
+          mkdir -p $HOME/.terminus
+          curl -L https://github.com/pantheon-systems/terminus/releases/download/3.5.0/terminus.phar -o /usr/local/bin/terminus
+          chmod +x /usr/local/bin/terminus
+          terminus --version
+
+      - name: Authenticate with Pantheon
+        env:
+          TERMINUS_TOKEN: ${{ secrets.PANTHEON_MACHINE_TOKEN }}
+        run: |
+          terminus auth:login --machine-token="$TERMINUS_TOKEN"
+
+      - name: Set connection to git mode
+        env:
+          SITE_NAME: ${{ secrets.PANTHEON_SITE_NAME }}
+          PANTHEON_ENV: dev
+        run: |
+          terminus connection:set "$SITE_NAME.$PANTHEON_ENV" git
+
+      - name: Deploy to Pantheon
+        env:
+          SITE_NAME: ${{ secrets.PANTHEON_SITE_NAME }}
+          PANTHEON_ENV: dev
+        run: |
+          # Configure git
+          git config --global user.email "deploy@phtech.community"
+          git config --global user.name "GitHub Actions"
+
+          # Get Pantheon git URL
+          PANTHEON_GIT_URL=$(terminus connection:info "$SITE_NAME.$PANTHEON_ENV" --field=git_url)
+          echo "Pantheon Git URL: $PANTHEON_GIT_URL"
+
+          # Add Pantheon remote
+          git remote add pantheon "$PANTHEON_GIT_URL" || git remote set-url pantheon "$PANTHEON_GIT_URL"
+
+          # Fetch to avoid conflicts
+          git fetch pantheon
+
+          # Push only custom code (thanks to .gitignore, only custom theme/mu-plugins/manifest are tracked)
+          git push pantheon HEAD:master --force
+
+      - name: Install dependencies from manifest
+        env:
+          SITE_NAME: ${{ secrets.PANTHEON_SITE_NAME }}
+          PANTHEON_ENV: dev
+        run: |
+          # Read manifest and install plugins/themes via WP-CLI on Pantheon
+          echo "Installing dependencies from manifest..."
+
+          # Check if manifest exists
+          if [ ! -f "manifest.json" ]; then
+            echo "⚠️ No manifest.json found, skipping dependency installation"
+            exit 0
+          fi
+
+          # Install jq for JSON parsing
+          sudo apt-get update && sudo apt-get install -y jq
+
+          # Get plugins list
+          PLUGINS=$(jq -r '.environments.dev.plugins | keys[]' manifest.json 2>/dev/null || echo "")
+
+          if [ -n "$PLUGINS" ]; then
+            for PLUGIN in $PLUGINS; do
+              VERSION=$(jq -r ".environments.dev.plugins.\"$PLUGIN\".version" manifest.json)
+              STATUS=$(jq -r ".environments.dev.plugins.\"$PLUGIN\".status" manifest.json)
+
+              echo "→ Installing $PLUGIN version $VERSION"
+              terminus wp "$SITE_NAME.$PANTHEON_ENV" -- plugin install "$PLUGIN" --version="$VERSION" --force || true
+
+              if [ "$STATUS" == "active" ]; then
+                terminus wp "$SITE_NAME.$PANTHEON_ENV" -- plugin activate "$PLUGIN" || true
+              fi
+            done
+          fi
+
+          # Get themes list (exclude custom theme)
+          THEMES=$(jq -r '.environments.dev.themes | keys[] | select(. != "phcommunity.tech")' manifest.json 2>/dev/null || echo "")
+
+          if [ -n "$THEMES" ]; then
+            for THEME in $THEMES; do
+              VERSION=$(jq -r ".environments.dev.themes.\"$THEME\".version" manifest.json)
+
+              echo "→ Installing $THEME version $VERSION"
+              terminus wp "$SITE_NAME.$PANTHEON_ENV" -- theme install "$THEME" --version="$VERSION" --force || true
+            done
+          fi
+
+          # Activate theme
+          ACTIVE_THEME=$(jq -r '.environments.dev.active_theme' manifest.json 2>/dev/null || echo "")
+          if [ -n "$ACTIVE_THEME" ] && [ "$ACTIVE_THEME" != "null" ]; then
+            echo "→ Activating theme: $ACTIVE_THEME"
+            terminus wp "$SITE_NAME.$PANTHEON_ENV" -- theme activate "$ACTIVE_THEME" || true
+          fi
+
+      - name: Clear cache
+        env:
+          SITE_NAME: ${{ secrets.PANTHEON_SITE_NAME }}
+          PANTHEON_ENV: dev
+        run: |
+          terminus env:clear-cache "$SITE_NAME.$PANTHEON_ENV"
+
+      - name: Deployment summary
+        env:
+          SITE_NAME: ${{ secrets.PANTHEON_SITE_NAME }}
+          PANTHEON_ENV: dev
+        run: |
+          echo "✅ Deployment complete!"
+          echo "🔗 Site: https://$PANTHEON_ENV-$SITE_NAME.pantheonsite.io"
+          echo ""
+          echo "📦 Deployed:"
+          echo "  - Custom theme: wp-content/themes/phcommunity.tech"
+          echo "  - Custom MU plugins"
+          echo "  - Environment manifest"
+          echo ""
+          echo "🔄 Installed from manifest:"
+          jq -r '.environments.dev.plugins | length' manifest.json 2>/dev/null | xargs echo "  - Plugins:" || echo "  - Plugins: N/A"
+          jq -r '.environments.dev.themes | length' manifest.json 2>/dev/null | xargs echo "  - Themes:" || echo "  - Themes: N/A"

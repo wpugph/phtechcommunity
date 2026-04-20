@@ -1,26 +1,55 @@
-# WordPress #
-############
+# WordPress Core #
+#################
+/wp-admin/
+/wp-includes/
+/wp-*.php
+/xmlrpc.php
+/index.php
+/license.txt
+/readme.html
+/README.md
+
+# WordPress Config #
+####################
 wp-config-local.php
+wp-config.php
 wp-cli.local.yml
-wp-content/uploads
+
+# All Plugins (managed via manifest) #
+#######################################
+wp-content/plugins/
+!wp-content/plugins/.gitkeep
+
+# All Themes except custom (managed via manifest) #
+####################################################
+wp-content/themes/*
+!wp-content/themes/phcommunity.tech/
+!wp-content/themes/.gitkeep
+
+# MU-Plugins - Track only custom, ignore Pantheon's #
+######################################################
+wp-content/mu-plugins/pantheon/
+wp-content/mu-plugins/pantheon.php
+
+# Uploads & Cache #
+###################
+wp-content/uploads/
 wp-content/blogs.dir/
 wp-content/upgrade/
 wp-content/backup-db/
 wp-content/updraft/
+wp-content/cache/
+wp-content/backups/
 wp-content/backupwordpress-*/
 wp-content/managewp/backups/
 wp-content/advanced-cache.php
 wp-content/wp-cache-config.php
+wp-content/wflogs/
 sitemap.xml
 sitemap.xml.gz
 *.log
 
-# @TODO writable paths
-wp-content/cache/
-wp-content/backups/
-
-# Avoid accidental modification of pantheon.upstream.yml in sites
-# created from this upstream
+# Avoid accidental modification of pantheon.upstream.yml
 pantheon.upstream.yml
 
 # Packages #
@@ -56,3 +85,7 @@ Thumbs.db
 # SASS #
 ##########
 .sass-cache
+
+# Phtech community specific
+.vscode
+local-xdebuginfo.php

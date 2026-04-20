@@ -1,0 +1,49 @@
+{
+  "pantheon": {
+    "site_name": "your-site-name",
+    "site_id": "",
+    "last_sync": ""
+  },
+  "environments": {
+    "dev": {
+      "wordpress": {
+        "version": "",
+        "db_version": ""
+      },
+      "php_version": "",
+      "plugins": {},
+      "themes": {},
+      "mu_plugins": {},
+      "active_theme": "",
+      "multisite": false,
+      "last_updated": ""
+    },
+    "test": {
+      "wordpress": {
+        "version": "",
+        "db_version": ""
+      },
+      "php_version": "",
+      "plugins": {},
+      "themes": {},
+      "mu_plugins": {},
+      "active_theme": "",
+      "multisite": false,
+      "last_updated": ""
+    },
+    "live": {
+      "wordpress": {
+        "version": "",
+        "db_version": ""
+      },
+      "php_version": "",
+      "plugins": {},
+      "themes": {},
+      "mu_plugins": {},
+      "active_theme": "",
+      "multisite": false,
+      "last_updated": ""
+    },
+    "multidevs": {}
+  }
+}
