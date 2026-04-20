@@ -453,7 +453,7 @@ jobs:
           fi
 
       - name: Install new plugins
-        if: steps.compare.outputs.plugins_install_count > 0
+        if: fromJSON(steps.compare.outputs.plugins_install_count) > 0
         env:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
         run: |
@@ -475,7 +475,7 @@ jobs:
           done < /tmp/plugins_to_install.txt
 
       - name: Update existing plugins
-        if: steps.compare.outputs.plugins_update_count > 0
+        if: fromJSON(steps.compare.outputs.plugins_update_count) > 0
         env:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
         run: |
@@ -501,7 +501,7 @@ jobs:
           done < /tmp/plugins_to_update.txt
 
       - name: Activate plugins
-        if: steps.compare.outputs.plugins_activate_count > 0
+        if: fromJSON(steps.compare.outputs.plugins_activate_count) > 0
         env:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
         run: |
@@ -518,7 +518,7 @@ jobs:
           done < /tmp/plugins_to_activate.txt
 
       - name: Deactivate plugins
-        if: steps.compare.outputs.plugins_deactivate_count > 0
+        if: fromJSON(steps.compare.outputs.plugins_deactivate_count) > 0
         env:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
         run: |
@@ -535,7 +535,7 @@ jobs:
           done < /tmp/plugins_to_deactivate.txt
 
       - name: Uninstall plugins not in manifest
-        if: steps.compare.outputs.plugins_uninstall_count > 0
+        if: fromJSON(steps.compare.outputs.plugins_uninstall_count) > 0
         env:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
         run: |
@@ -556,7 +556,7 @@ jobs:
           done < /tmp/plugins_to_uninstall.txt
 
       - name: Install new themes
-        if: steps.compare.outputs.themes_install_count > 0
+        if: fromJSON(steps.compare.outputs.themes_install_count) > 0
         env:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
         run: |
@@ -574,7 +574,7 @@ jobs:
           done < /tmp/themes_to_install.txt
 
       - name: Update existing themes
-        if: steps.compare.outputs.themes_update_count > 0
+        if: fromJSON(steps.compare.outputs.themes_update_count) > 0
         env:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
         run: |
@@ -602,7 +602,7 @@ jobs:
           terminus wp "$SITE_NAME.dev" -- theme activate "$THEME_TARGET" || echo "⚠️ Could not activate theme"
 
       - name: Commit changes to Pantheon dev
-        if: github.event.inputs.commit_changes == 'true' && steps.compare.outputs.total_actions > 0
+        if: github.event.inputs.commit_changes == 'true' && fromJSON(steps.compare.outputs.total_actions) > 0
         env:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
           SOURCE_ENV: ${{ steps.load_manifest.outputs.source_env }}
@@ -690,6 +690,99 @@ jobs:
 
           # Commit with detailed message
           terminus env:commit "$SITE_NAME.dev" --message="$(cat /tmp/commit_message.txt)" || echo "⚠️ No changes to commit or commit failed"
+
+      - name: Update manifest with current Pantheon dev state
+        if: fromJSON(steps.compare.outputs.total_actions) > 0
+        env:
+          SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
+        run: |
+          echo "Capturing current Pantheon dev state to manifest..."
+
+          # Get current WordPress version
+          WP_VERSION=$(terminus wp "$SITE_NAME.dev" -- core version 2>/dev/null | grep -oE "^[0-9]+\.[0-9]+(\.[0-9]+)?" | head -1 || echo "unknown")
+
+          # Get DB version
+          DB_VERSION=$(terminus wp "$SITE_NAME.dev" -- core version --extra 2>/dev/null | grep 'Database' | awk '{print $3}' || echo "unknown")
+
+          # Get PHP version
+          PHP_VERSION=$(terminus env:info "$SITE_NAME.dev" --field=php_version 2>/dev/null || echo "unknown")
+
+          # Get plugins list
+          terminus wp "$SITE_NAME.dev" -- plugin list --format=json > /tmp/current_plugins_final.json 2>&1
+
+          # Get themes list
+          terminus wp "$SITE_NAME.dev" -- theme list --format=json > /tmp/current_themes_final.json 2>&1
+
+          # Get active theme
+          ACTIVE_THEME=$(terminus wp "$SITE_NAME.dev" -- theme list --status=active --field=name 2>/dev/null | grep -v "^\[" | head -1 || echo "unknown")
+
+          # Get MU plugins
+          MU_PLUGINS_JSON=$(terminus wp "$SITE_NAME.dev" -- eval 'echo json_encode(get_mu_plugins());' 2>/dev/null | grep -v "^\[" | grep "^{" || echo "{}")
+
+          # Check if multisite
+          IS_MULTISITE=$(terminus wp "$SITE_NAME.dev" -- eval 'echo is_multisite() ? "true" : "false";' 2>/dev/null | grep -E "^(true|false)" || echo "false")
+
+          # Process plugins JSON
+          PLUGINS_OBJ=$(cat /tmp/current_plugins_final.json | jq -r 'if type == "array" then map({(.name): {version: .version, status: .status, update: .update, update_version: .update_version}}) | add // {} else {} end' 2>/dev/null || echo "{}")
+
+          # Process themes JSON
+          THEMES_OBJ=$(cat /tmp/current_themes_final.json | jq -r 'if type == "array" then map({(.name): {version: .version, status: .status, update: .update}}) | add // {} else {} end' 2>/dev/null || echo "{}")
+
+          # Process MU plugins
+          MU_PLUGINS_OBJ=$(echo "$MU_PLUGINS_JSON" | jq 'to_entries | map({(.key): {version: .value.Version, name: .value.Name}}) | add // {}' 2>/dev/null || echo "{}")
+
+          # Build dev environment data
+          DEV_ENV_DATA=$(jq -n \
+              --arg wp_version "$WP_VERSION" \
+              --arg db_version "$DB_VERSION" \
+              --arg php_version "$PHP_VERSION" \
+              --argjson plugins "$PLUGINS_OBJ" \
+              --argjson themes "$THEMES_OBJ" \
+              --argjson mu_plugins "$MU_PLUGINS_OBJ" \
+              --arg active_theme "$ACTIVE_THEME" \
+              --argjson multisite "$IS_MULTISITE" \
+              --arg last_updated "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+              '{
+                  wordpress: {
+                      version: $wp_version,
+                      db_version: $db_version
+                  },
+                  php_version: $php_version,
+                  plugins: $plugins,
+                  themes: $themes,
+                  mu_plugins: $mu_plugins,
+                  active_theme: $active_theme,
+                  multisite: $multisite,
+                  last_updated: $last_updated
+              }')
+
+          # Update manifest file with new dev data
+          jq --argjson data "$DEV_ENV_DATA" \
+              --arg last_sync "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+              '.environments.dev = $data | .pantheon.last_sync = $last_sync' \
+              bin/manifest.json > bin/manifest.json.tmp
+          mv bin/manifest.json.tmp bin/manifest.json
+
+          echo "✅ Manifest updated with current dev state"
+
+      - name: Commit updated manifest
+        if: fromJSON(steps.compare.outputs.total_actions) > 0
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet bin/manifest.json; then
+            echo "No changes to manifest"
+          else
+            git add bin/manifest.json
+            git commit -m "Update manifest: sync from ${{ steps.load_manifest.outputs.source_env }} to dev (automated)
+
+            Captured current Pantheon dev state after sync.
+
+            Co-Authored-By: github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+            git push
+            echo "✅ Manifest committed and pushed"
+          fi
 
       - name: Switch dev back to Git mode
         if: always()
