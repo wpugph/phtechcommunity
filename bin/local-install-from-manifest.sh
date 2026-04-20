@@ -1,11 +1,11 @@
 #!/bin/bash
 ###############################################################################
-# Local Install - Install WordPress, plugins, and themes from manifest
+# Local Install From Manifest - Install WordPress, plugins, and themes from manifest
 #
 # This script compares your local WordPress installation with the manifest
 # and only installs/updates what's different. It's fast and efficient by default.
 #
-# Usage: ./bin/local-install.sh [--force] [--source-env=dev] [--yes]
+# Usage: ./bin/local-install-from-manifest.sh [--force] [--source-env=dev] [--yes]
 #
 # Arguments:
 #   --source-env=ENV   Environment to sync from (dev, test, live, local)
@@ -13,19 +13,19 @@
 #   --yes              Skip confirmation prompt
 #
 # Examples:
-#   ./bin/local-install.sh                    # Interactive, sync from dev
-#   ./bin/local-install.sh --yes              # Auto-confirm
-#   ./bin/local-install.sh --source-env=live  # Sync from live
-#   ./bin/local-install.sh --force            # Force reinstall everything
+#   ./bin/local-install-from-manifest.sh                    # Interactive, sync from dev
+#   ./bin/local-install-from-manifest.sh --yes              # Auto-confirm
+#   ./bin/local-install-from-manifest.sh --source-env=live  # Sync from live
+#   ./bin/local-install-from-manifest.sh --force            # Force reinstall everything
 #
 ###############################################################################
 
 # Ensure script is run with bash
 if [ -z "$BASH_VERSION" ]; then
     echo "Error: This script requires bash. Please run with:"
-    echo "  ./bin/local-install.sh"
+    echo "  ./bin/local-install-from-manifest.sh"
     echo "or:"
-    echo "  bash bin/local-install.sh"
+    echo "  bash bin/local-install-from-manifest.sh"
     exit 1
 fi
 

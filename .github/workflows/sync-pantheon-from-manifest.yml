@@ -1,0 +1,309 @@
+name: Sync Pantheon from Manifest
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_env:
+        description: 'Source environment in manifest'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - test
+          - live
+          - local
+      force_reinstall:
+        description: 'Force full reinstall (slow, reinstalls everything)'
+        required: false
+        type: boolean
+        default: false
+      commit_changes:
+        description: 'Commit changes to Pantheon dev'
+        required: false
+        type: boolean
+        default: false
+      deploy_to_test:
+        description: 'Deploy to test environment after dev'
+        required: false
+        type: boolean
+        default: false
+      deploy_to_live:
+        description: 'Deploy to live environment after test'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  sync-pantheon:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install dependencies
+        run: |
+          # Install Terminus
+          mkdir -p $HOME/.terminus
+          curl -L https://github.com/pantheon-systems/terminus/releases/download/3.5.0/terminus.phar -o /usr/local/bin/terminus
+          chmod +x /usr/local/bin/terminus
+
+          # Install jq
+          sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Authenticate with Pantheon
+        env:
+          TERMINUS_TOKEN: ${{ secrets.PANTHEON_MACHINE_TOKEN }}
+        run: |
+          terminus auth:login --machine-token="$TERMINUS_TOKEN"
+
+      - name: Load manifest and exclusions
+        id: load_manifest
+        run: |
+          SITE_NAME="${{ secrets.PANTHEON_SITE_NAME }}"
+          SOURCE_ENV="${{ github.event.inputs.source_env }}"
+
+          echo "site_name=$SITE_NAME" >> $GITHUB_OUTPUT
+          echo "source_env=$SOURCE_ENV" >> $GITHUB_OUTPUT
+
+          # Load exclusions
+          if [ -f "bin/manifest-exclude.txt" ]; then
+            EXCLUDED=$(grep -v '^#' bin/manifest-exclude.txt | grep -v '^[[:space:]]*$' | tr '\n' '|' | sed 's/|$//')
+            echo "excluded=$EXCLUDED" >> $GITHUB_OUTPUT
+          else
+            echo "excluded=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Compare current state with manifest
+        id: compare
+        env:
+          SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
+          SOURCE_ENV: ${{ steps.load_manifest.outputs.source_env }}
+          EXCLUDED: ${{ steps.load_manifest.outputs.excluded }}
+          FORCE: ${{ github.event.inputs.force_reinstall }}
+        run: |
+          echo "## 🔍 Comparing Pantheon dev with manifest ($SOURCE_ENV)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Wake dev environment
+          terminus env:wake "$SITE_NAME.dev" || true
+
+          # Get target versions from manifest
+          WP_TARGET=$(jq -r ".environments.$SOURCE_ENV.wordpress.version // \"unknown\"" bin/manifest.json)
+          THEME_TARGET=$(jq -r ".environments.$SOURCE_ENV.active_theme // \"unknown\"" bin/manifest.json)
+
+          # Get current versions from Pantheon dev
+          WP_CURRENT=$(terminus wp "$SITE_NAME.dev" -- core version 2>/dev/null | grep -v "^\[" | grep -E "^[0-9]" || echo "unknown")
+          THEME_CURRENT=$(terminus wp "$SITE_NAME.dev" -- theme list --status=active --field=name 2>/dev/null | grep -v "^\[" | head -1 || echo "unknown")
+
+          echo "wp_target=$WP_TARGET" >> $GITHUB_OUTPUT
+          echo "wp_current=$WP_CURRENT" >> $GITHUB_OUTPUT
+          echo "theme_target=$THEME_TARGET" >> $GITHUB_OUTPUT
+          echo "theme_current=$THEME_CURRENT" >> $GITHUB_OUTPUT
+
+          # Determine if WP core needs update
+          if [ "$FORCE" = "true" ] || [ "$WP_CURRENT" != "$WP_TARGET" ]; then
+            echo "wp_action=update" >> $GITHUB_OUTPUT
+          else
+            echo "wp_action=skip" >> $GITHUB_OUTPUT
+          fi
+
+          # Get plugins from manifest and current state
+          jq -r ".environments.$SOURCE_ENV.plugins | to_entries[] | \"\(.key)|\(.value.version)|\(.value.status)\"" bin/manifest.json > /tmp/manifest_plugins.txt
+          terminus wp "$SITE_NAME.dev" -- plugin list --format=json 2>/dev/null | \
+            grep -v "^\[" | grep "^\[" | \
+            jq -r '.[] | "\(.name)|\(.version)|\(.status)"' > /tmp/current_plugins.txt || echo "" > /tmp/current_plugins.txt
+
+          # Compare and build action lists
+          > /tmp/plugins_to_install.txt
+          > /tmp/plugins_to_update.txt
+          > /tmp/plugins_to_activate.txt
+          > /tmp/plugins_to_deactivate.txt
+
+          while IFS='|' read -r slug version status; do
+            # Skip excluded plugins
+            if echo "$EXCLUDED" | grep -qE "(^|\\|)${slug}(\\||$)"; then
+              continue
+            fi
+
+            current_line=$(grep "^${slug}|" /tmp/current_plugins.txt || echo "")
+
+            if [ -z "$current_line" ]; then
+              # Plugin not installed
+              echo "${slug}|${version}|${status}" >> /tmp/plugins_to_install.txt
+            else
+              current_version=$(echo "$current_line" | cut -d'|' -f2)
+              current_status=$(echo "$current_line" | cut -d'|' -f3)
+
+              if [ "$FORCE" = "true" ] || [ "$current_version" != "$version" ]; then
+                echo "${slug}|${version}|${status}" >> /tmp/plugins_to_update.txt
+              elif [ "$status" = "active" ] && [ "$current_status" != "active" ]; then
+                echo "$slug" >> /tmp/plugins_to_activate.txt
+              elif [ "$status" = "inactive" ] && [ "$current_status" = "active" ]; then
+                echo "$slug" >> /tmp/plugins_to_deactivate.txt
+              fi
+            fi
+          done < /tmp/manifest_plugins.txt
+
+          # Count actions
+          INSTALL_COUNT=$(wc -l < /tmp/plugins_to_install.txt | xargs)
+          UPDATE_COUNT=$(wc -l < /tmp/plugins_to_update.txt | xargs)
+          ACTIVATE_COUNT=$(wc -l < /tmp/plugins_to_activate.txt | xargs)
+          DEACTIVATE_COUNT=$(wc -l < /tmp/plugins_to_deactivate.txt | xargs)
+
+          echo "plugins_install_count=$INSTALL_COUNT" >> $GITHUB_OUTPUT
+          echo "plugins_update_count=$UPDATE_COUNT" >> $GITHUB_OUTPUT
+          echo "plugins_activate_count=$ACTIVATE_COUNT" >> $GITHUB_OUTPUT
+          echo "plugins_deactivate_count=$DEACTIVATE_COUNT" >> $GITHUB_OUTPUT
+
+          # Calculate total actions
+          TOTAL_ACTIONS=0
+          [ "$WP_CURRENT" != "$WP_TARGET" ] && TOTAL_ACTIONS=$((TOTAL_ACTIONS + 1))
+          TOTAL_ACTIONS=$((TOTAL_ACTIONS + INSTALL_COUNT + UPDATE_COUNT + ACTIVATE_COUNT + DEACTIVATE_COUNT))
+
+          echo "total_actions=$TOTAL_ACTIONS" >> $GITHUB_OUTPUT
+
+          # Write summary
+          echo "**Source:** $SOURCE_ENV environment from manifest" >> $GITHUB_STEP_SUMMARY
+          echo "**Mode:** $([ "$FORCE" = "true" ] && echo "Force reinstall (slow)" || echo "Smart sync (fast)")" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### WordPress Core" >> $GITHUB_STEP_SUMMARY
+          if [ "$WP_CURRENT" != "$WP_TARGET" ]; then
+            echo "- 🔄 Update: $WP_CURRENT → $WP_TARGET" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ✅ Up to date: $WP_TARGET" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Plugins" >> $GITHUB_STEP_SUMMARY
+          echo "- Install: $INSTALL_COUNT" >> $GITHUB_STEP_SUMMARY
+          echo "- Update: $UPDATE_COUNT" >> $GITHUB_STEP_SUMMARY
+          echo "- Activate: $ACTIVATE_COUNT" >> $GITHUB_STEP_SUMMARY
+          echo "- Deactivate: $DEACTIVATE_COUNT" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Total actions:** $TOTAL_ACTIONS" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: Update WordPress Core
+        if: steps.compare.outputs.wp_action == 'update'
+        env:
+          SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
+          WP_TARGET: ${{ steps.compare.outputs.wp_target }}
+        run: |
+          echo "Updating WordPress to $WP_TARGET..."
+          terminus wp "$SITE_NAME.dev" -- core update --version="$WP_TARGET" || \
+          terminus wp "$SITE_NAME.dev" -- core download --version="$WP_TARGET" --force
+
+      - name: Install new plugins
+        if: steps.compare.outputs.plugins_install_count > 0
+        env:
+          SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
+        run: |
+          echo "Installing ${{ steps.compare.outputs.plugins_install_count }} plugins..."
+          while IFS='|' read -r slug version status; do
+            [ -z "$slug" ] && continue
+            echo "  Installing ${slug} ${version}..."
+            terminus wp "$SITE_NAME.dev" -- plugin install "$slug" --version="$version" || echo "  ⚠️ Failed to install $slug"
+            [ "$status" = "active" ] && terminus wp "$SITE_NAME.dev" -- plugin activate "$slug" 2>/dev/null || true
+          done < /tmp/plugins_to_install.txt
+
+      - name: Update existing plugins
+        if: steps.compare.outputs.plugins_update_count > 0
+        env:
+          SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
+        run: |
+          echo "Updating ${{ steps.compare.outputs.plugins_update_count }} plugins..."
+          while IFS='|' read -r slug version status; do
+            [ -z "$slug" ] && continue
+            echo "  Updating ${slug} to ${version}..."
+            terminus wp "$SITE_NAME.dev" -- plugin update "$slug" --version="$version" || \
+            terminus wp "$SITE_NAME.dev" -- plugin install "$slug" --version="$version" --force || \
+            echo "  ⚠️ Failed to update $slug"
+            [ "$status" = "active" ] && terminus wp "$SITE_NAME.dev" -- plugin activate "$slug" 2>/dev/null || true
+            [ "$status" = "inactive" ] && terminus wp "$SITE_NAME.dev" -- plugin deactivate "$slug" 2>/dev/null || true
+          done < /tmp/plugins_to_update.txt
+
+      - name: Activate plugins
+        if: steps.compare.outputs.plugins_activate_count > 0
+        env:
+          SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
+        run: |
+          echo "Activating ${{ steps.compare.outputs.plugins_activate_count }} plugins..."
+          while read -r slug; do
+            [ -z "$slug" ] && continue
+            terminus wp "$SITE_NAME.dev" -- plugin activate "$slug" || echo "  ⚠️ Failed to activate $slug"
+          done < /tmp/plugins_to_activate.txt
+
+      - name: Deactivate plugins
+        if: steps.compare.outputs.plugins_deactivate_count > 0
+        env:
+          SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
+        run: |
+          echo "Deactivating ${{ steps.compare.outputs.plugins_deactivate_count }} plugins..."
+          while read -r slug; do
+            [ -z "$slug" ] && continue
+            terminus wp "$SITE_NAME.dev" -- plugin deactivate "$slug" || echo "  ⚠️ Failed to deactivate $slug"
+          done < /tmp/plugins_to_deactivate.txt
+
+      - name: Activate theme
+        if: steps.compare.outputs.theme_current != steps.compare.outputs.theme_target
+        env:
+          SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
+          THEME_TARGET: ${{ steps.compare.outputs.theme_target }}
+        run: |
+          echo "Activating theme: $THEME_TARGET"
+          terminus wp "$SITE_NAME.dev" -- theme activate "$THEME_TARGET" || echo "⚠️ Could not activate theme"
+
+      - name: Commit changes to Pantheon dev
+        if: github.event.inputs.commit_changes == 'true' && steps.compare.outputs.total_actions > 0
+        env:
+          SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
+          SOURCE_ENV: ${{ steps.load_manifest.outputs.source_env }}
+        run: |
+          echo "Committing changes to Pantheon dev..."
+          terminus env:commit "$SITE_NAME.dev" --message="Sync from manifest ($SOURCE_ENV): ${{ steps.compare.outputs.total_actions }} changes applied via GitHub Actions" || echo "⚠️ No changes to commit or commit failed"
+
+      - name: Clear cache
+        env:
+          SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
+        run: |
+          terminus env:clear-cache "$SITE_NAME.dev"
+
+      - name: Deploy to test
+        if: github.event.inputs.deploy_to_test == 'true'
+        env:
+          SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
+        run: |
+          echo "Deploying to test environment..."
+          terminus env:deploy "$SITE_NAME.test" --sync-content --note="Deployed from manifest sync via GitHub Actions" || echo "⚠️ Deploy to test failed"
+          terminus env:clear-cache "$SITE_NAME.test"
+
+      - name: Deploy to live
+        if: github.event.inputs.deploy_to_live == 'true' && github.event.inputs.deploy_to_test == 'true'
+        env:
+          SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
+        run: |
+          echo "Deploying to live environment..."
+          terminus env:deploy "$SITE_NAME.live" --note="Deployed from manifest sync via GitHub Actions" || echo "⚠️ Deploy to live failed"
+          terminus env:clear-cache "$SITE_NAME.live"
+
+      - name: Final summary
+        if: always()
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## ✅ Sync Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Actions performed:** ${{ steps.compare.outputs.total_actions }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Committed to dev:** ${{ github.event.inputs.commit_changes }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployed to test:** ${{ github.event.inputs.deploy_to_test }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployed to live:** ${{ github.event.inputs.deploy_to_live }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.compare.outputs.total_actions }}" = "0" ]; then
+            echo "ℹ️ **No changes needed** - Pantheon dev is already up to date with manifest!" >> $GITHUB_STEP_SUMMARY
+          fi
