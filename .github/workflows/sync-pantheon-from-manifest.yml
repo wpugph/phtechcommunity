@@ -335,6 +335,18 @@ jobs:
           THEME_INSTALL_COUNT=$(wc -l < /tmp/themes_to_install.txt | xargs)
           THEME_UPDATE_COUNT=$(wc -l < /tmp/themes_to_update.txt | xargs)
 
+          # Debug: Show what's in the update file
+          echo ""
+          echo "=== DEBUG: Plugins to Update ==="
+          if [ "$UPDATE_COUNT" -gt 0 ]; then
+            echo "Update file contents:"
+            cat /tmp/plugins_to_update.txt
+          else
+            echo "No plugins to update"
+          fi
+          echo "================================"
+          echo ""
+
           echo "plugins_install_count=$INSTALL_COUNT" >> $GITHUB_OUTPUT
           echo "plugins_update_count=$UPDATE_COUNT" >> $GITHUB_OUTPUT
           echo "plugins_activate_count=$ACTIVATE_COUNT" >> $GITHUB_OUTPUT
@@ -480,25 +492,46 @@ jobs:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
         run: |
           echo "Updating/downgrading ${{ steps.compare.outputs.plugins_update_count }} plugins..."
-          > /tmp/plugins_updated.txt
-          while IFS='|' read -r slug version current_version status; do
-            [ -z "$slug" ] && continue
+          echo ""
+          echo "=== DEBUG: Update Step Starting ==="
+          echo "File contents:"
+          cat /tmp/plugins_to_update.txt
+          echo "================================"
+          echo ""
 
+          > /tmp/plugins_updated.txt
+          COUNTER=0
+          while IFS='|' read -r slug version current_version status; do
+            if [ -z "$slug" ]; then
+              echo "  ⚠️ Skipping empty line"
+              continue
+            fi
+
+            COUNTER=$((COUNTER + 1))
+            echo "[$COUNTER] Processing: slug='$slug' target='$version' current='$current_version' status='$status'"
             echo "  Changing ${slug}: ${current_version} → ${version}..."
+
             # For version changes (upgrade or downgrade), we use install with --force and specific version
+            echo "  Running: terminus wp $SITE_NAME.dev -- plugin install $slug --version=$version --force"
             if terminus wp "$SITE_NAME.dev" -- plugin install "$slug" --version="$version" --force; then
               echo "$slug: $current_version → $version" >> /tmp/plugins_updated.txt
               # Apply activation status from manifest
               if [ "$status" = "active" ]; then
-                terminus wp "$SITE_NAME.dev" -- plugin activate "$slug" 2>/dev/null || true
+                echo "  Activating $slug..."
+                terminus wp "$SITE_NAME.dev" -- plugin activate "$slug" 2>/dev/null || echo "  ⚠️ Activation failed"
               elif [ "$status" = "inactive" ]; then
-                terminus wp "$SITE_NAME.dev" -- plugin deactivate "$slug" 2>/dev/null || true
+                echo "  Deactivating $slug..."
+                terminus wp "$SITE_NAME.dev" -- plugin deactivate "$slug" 2>/dev/null || echo "  ⚠️ Deactivation failed"
               fi
               echo "  ✅ Changed: $slug $current_version → $version"
             else
               echo "  ❌ Failed to change $slug version"
             fi
+            echo ""
           done < /tmp/plugins_to_update.txt
+
+          echo "Total plugins processed: $COUNTER"
+          echo "Successfully updated: $(wc -l < /tmp/plugins_updated.txt | xargs)"
 
       - name: Activate plugins
         if: fromJSON(steps.compare.outputs.plugins_activate_count) > 0
@@ -506,9 +539,14 @@ jobs:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
         run: |
           echo "Activating ${{ steps.compare.outputs.plugins_activate_count }} plugins..."
+          echo "Plugins to activate:"
+          cat /tmp/plugins_to_activate.txt
+          echo ""
+
           > /tmp/plugins_activated.txt
           while read -r slug; do
             [ -z "$slug" ] && continue
+            echo "  Activating $slug..."
             if terminus wp "$SITE_NAME.dev" -- plugin activate "$slug"; then
               echo "$slug" >> /tmp/plugins_activated.txt
               echo "  ✅ Activated: $slug"
@@ -523,9 +561,14 @@ jobs:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
         run: |
           echo "Deactivating ${{ steps.compare.outputs.plugins_deactivate_count }} plugins..."
+          echo "Plugins to deactivate:"
+          cat /tmp/plugins_to_deactivate.txt
+          echo ""
+
           > /tmp/plugins_deactivated.txt
           while read -r slug; do
             [ -z "$slug" ] && continue
+            echo "  Deactivating $slug..."
             if terminus wp "$SITE_NAME.dev" -- plugin deactivate "$slug"; then
               echo "$slug" >> /tmp/plugins_deactivated.txt
               echo "  ✅ Deactivated: $slug"
@@ -540,19 +583,26 @@ jobs:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
         run: |
           echo "Uninstalling ${{ steps.compare.outputs.plugins_uninstall_count }} plugins not in manifest..."
+          echo "Plugins to uninstall:"
+          cat /tmp/plugins_to_uninstall.txt
+          echo ""
+
           > /tmp/plugins_uninstalled.txt
           while IFS='|' read -r slug version; do
             [ -z "$slug" ] && continue
             echo "  Uninstalling ${slug} ${version}..."
             # Deactivate first if active
-            terminus wp "$SITE_NAME.dev" -- plugin deactivate "$slug" 2>/dev/null || true
+            echo "  Deactivating if needed..."
+            terminus wp "$SITE_NAME.dev" -- plugin deactivate "$slug" 2>/dev/null || echo "  (not active or already deactivated)"
             # Then uninstall
+            echo "  Running uninstall..."
             if terminus wp "$SITE_NAME.dev" -- plugin uninstall "$slug" --deactivate; then
               echo "$slug $version" >> /tmp/plugins_uninstalled.txt
               echo "  ✅ Uninstalled: $slug $version"
             else
               echo "  ❌ Failed to uninstall $slug"
             fi
+            echo ""
           done < /tmp/plugins_to_uninstall.txt
 
       - name: Install new themes
