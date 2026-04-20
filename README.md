@@ -60,7 +60,7 @@ This repository uses a **manifest-based deployment approach** - only custom code
 │   ├── manifest.json                 # Environment state for dev/test/live
 │   ├── manifest-exclude.txt          # Plugins/themes to exclude from manifest
 │   ├── sync-manifest.sh              # Sync from Pantheon to manifest
-│   ├── local-install.sh              # Install from manifest to local
+│   ├── local-install-from-manifest.sh              # Install from manifest to local
 │   └── bootstrap-env.sh              # Legacy: Replicate environment locally
 ├── .github/workflows/
 │   ├── deploy-pantheon.yml           # Auto-deploy on merged PRs
@@ -154,13 +154,13 @@ We recommend using **Local by Flywheel** for local WordPress development, but yo
 5. **Install WordPress, plugins, and themes from manifest:**
    ```bash
    # Install everything from dev environment
-   ./bin/local-install.sh
+   ./bin/local-install-from-manifest.sh
    
    # Or force reinstall if needed
-   ./bin/local-install.sh --force
+   ./bin/local-install-from-manifest.sh --force
    
    # Install from test or live environment
-   ./bin/local-install.sh --source-env=live
+   ./bin/local-install-from-manifest.sh --source-env=live
    ```
 
 6. **Import database from Pantheon (optional):**
@@ -202,7 +202,7 @@ We recommend using **Local by Flywheel** for local WordPress development, but yo
    ./bin/sync-manifest.sh eventsph
    
    # Install WordPress, plugins, themes
-   ./bin/local-install.sh
+   ./bin/local-install-from-manifest.sh
    ```
 
 4. **Create and import database:**
@@ -235,7 +235,7 @@ query-monitor
 
 These exclusions apply to:
 - `./bin/sync-manifest.sh` - Won't include them in manifest
-- `./bin/local-install.sh` - Won't install them locally
+- `./bin/local-install-from-manifest.sh` - Won't install them locally
 
 ### Keeping Local Environment in Sync
 
@@ -246,7 +246,7 @@ When Pantheon environment is updated:
 ./bin/sync-manifest.sh eventsph
 
 # 2. Update local installation
-./bin/local-install.sh
+./bin/local-install-from-manifest.sh
 
 # 3. Optional: Pull latest database
 terminus backup:create eventsph.dev --element=db
@@ -451,7 +451,7 @@ We welcome contributions from the community! Here's how you can help:
 # Premium plugins need manual installation via wp-admin
 
 # Try forcing installation
-./bin/local-install.sh --force
+./bin/local-install-from-manifest.sh --force
 ```
 
 ### Local environment out of sync with Pantheon
@@ -460,7 +460,7 @@ We welcome contributions from the community! Here's how you can help:
 ./bin/sync-manifest.sh eventsph
 
 # 2. Reinstall from manifest
-./bin/local-install.sh --force
+./bin/local-install-from-manifest.sh --force
 
 # 3. Optional: Import fresh database
 terminus backup:create eventsph.dev --element=db

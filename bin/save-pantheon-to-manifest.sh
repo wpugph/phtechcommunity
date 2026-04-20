@@ -269,5 +269,5 @@ echo "" >&2
 echo -e "${YELLOW}Next steps:${NC}" >&2
 echo -e "  1. Review bin/manifest.json" >&2
 echo -e "  2. Commit to git: git add bin/manifest.json && git commit -m 'Update manifest from Pantheon'" >&2
-echo -e "  3. Sync local: ./bin/local-install.sh" >&2
+echo -e "  3. Sync local: ./bin/local-install-from-manifest.sh" >&2
 echo "" >&2

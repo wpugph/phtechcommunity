@@ -61,6 +61,13 @@ jobs:
         run: |
           terminus auth:login --machine-token="$TERMINUS_TOKEN"
 
+      - name: Switch dev to SFTP mode
+        env:
+          SITE_NAME: ${{ secrets.PANTHEON_SITE_NAME }}
+        run: |
+          echo "Switching dev environment to SFTP mode..."
+          terminus connection:set "$SITE_NAME.dev" sftp || echo "Already in SFTP mode or switch failed"
+
       - name: Load manifest and exclusions
         id: load_manifest
         run: |
@@ -265,6 +272,14 @@ jobs:
         run: |
           echo "Committing changes to Pantheon dev..."
           terminus env:commit "$SITE_NAME.dev" --message="Sync from manifest ($SOURCE_ENV): ${{ steps.compare.outputs.total_actions }} changes applied via GitHub Actions" || echo "⚠️ No changes to commit or commit failed"
+
+      - name: Switch dev back to Git mode
+        if: github.event.inputs.commit_changes == 'true'
+        env:
+          SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
+        run: |
+          echo "Switching dev environment back to Git mode..."
+          terminus connection:set "$SITE_NAME.dev" git || echo "⚠️ Could not switch to Git mode"
 
       - name: Clear cache
         env:
