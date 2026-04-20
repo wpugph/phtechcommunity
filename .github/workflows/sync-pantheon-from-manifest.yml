@@ -61,6 +61,26 @@ jobs:
         run: |
           terminus auth:login --machine-token="$TERMINUS_TOKEN"
 
+      - name: Setup SSH for Pantheon
+        env:
+          PANTHEON_SSH_KEY: ${{ secrets.PANTHEON_SSH_PRIVATE_KEY }}
+        run: |
+          # Setup SSH directory
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          # Add SSH private key from secret
+          echo "$PANTHEON_SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+          # Disable strict host key checking for Pantheon
+          cat >> ~/.ssh/config <<EOF
+          Host *.drush.in
+              StrictHostKeyChecking no
+              UserKnownHostsFile=/dev/null
+          EOF
+          chmod 600 ~/.ssh/config
+
       - name: Switch dev to SFTP mode
         env:
           SITE_NAME: ${{ secrets.PANTHEON_SITE_NAME }}
@@ -274,7 +294,7 @@ jobs:
           terminus env:commit "$SITE_NAME.dev" --message="Sync from manifest ($SOURCE_ENV): ${{ steps.compare.outputs.total_actions }} changes applied via GitHub Actions" || echo "⚠️ No changes to commit or commit failed"
 
       - name: Switch dev back to Git mode
-        if: github.event.inputs.commit_changes == 'true'
+        if: always()
         env:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
         run: |
