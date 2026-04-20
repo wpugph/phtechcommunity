@@ -69,7 +69,7 @@ jobs:
           # Function to get environment data
           get_env_data() {
             local ENV=$1
-            echo "→ Fetching $ENV environment..."
+            echo "→ Fetching $ENV environment..." >&2
 
             # Wake environment
             terminus env:wake "$SITE_NAME.$ENV" &> /dev/null || true
@@ -126,25 +126,27 @@ jobs:
           done
 
           # Get multidevs
-          echo "→ Checking for multidev environments..."
+          echo "→ Checking for multidev environments..." >&2
           MULTIDEVS=$(terminus multidev:list "$SITE_NAME" --format=json 2>/dev/null || echo "[]")
           MULTIDEV_COUNT=$(echo "$MULTIDEVS" | jq 'length')
 
           if [ "$MULTIDEV_COUNT" -gt 0 ]; then
-            echo "  Found $MULTIDEV_COUNT multidev(s)"
+            echo "  Found $MULTIDEV_COUNT multidev(s)" >&2
             echo "$MULTIDEVS" | jq -r '.[].id' | while read -r MULTIDEV_NAME; do
               MULTIDEV_DATA=$(get_env_data "$MULTIDEV_NAME")
               jq --arg name "$MULTIDEV_NAME" --argjson data "$MULTIDEV_DATA" \
                 ".environments.multidevs[\$name] = \$data" bin/manifest.json > bin/manifest.json.tmp
               mv bin/manifest.json.tmp bin/manifest.json
             done
+          else
+            echo "  No multidev environments found" >&2
           fi
 
           # Pretty print
           jq '.' bin/manifest.json > bin/manifest.json.tmp
           mv bin/manifest.json.tmp bin/manifest.json
 
-          echo "✅ Manifest synced successfully!"
+          echo "✅ Manifest synced successfully!" >&2
 
       - name: Check for changes
         id: check_changes
