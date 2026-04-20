@@ -8,7 +8,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-MANIFEST_FILE="$PROJECT_ROOT/manifest.json"
+MANIFEST_FILE="$SCRIPT_DIR/manifest.json"
 
 # Colors for output
 RED='\033[0;31m'
@@ -175,6 +175,6 @@ echo -e "${GREEN}╚════════════════════
 echo -e "${BLUE}Manifest saved to: $MANIFEST_FILE${NC}"
 echo ""
 echo -e "${YELLOW}Next steps:${NC}"
-echo -e "  1. Review manifest.json"
-echo -e "  2. Commit to git: git add manifest.json && git commit -m 'Update environment manifest'"
+echo -e "  1. Review bin/manifest.json"
+echo -e "  2. Commit to git: git add bin/manifest.json && git commit -m 'Update environment manifest'"
 echo -e "  3. Bootstrap local: ./bin/bootstrap-env.sh dev"

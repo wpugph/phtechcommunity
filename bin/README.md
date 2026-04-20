@@ -45,7 +45,7 @@ Quick reference for managing Pantheon environments.
   - MU plugins
   - Active theme
   - Multisite configuration
-- Saves everything to `manifest.json`
+- Saves everything to `bin/manifest.json`
 
 **When to use:**
 - Before major deployments (to capture current state)
@@ -68,7 +68,7 @@ git commit -m "Update manifest: added Jetpack 10.5"
 ### `bootstrap-env.sh`
 **Purpose:** Replicate a Pantheon environment locally  
 **What it does:**
-- Reads `manifest.json`
+- Reads `bin/manifest.json`
 - Installs/updates WordPress core to match version
 - Installs/updates all plugins with exact versions
 - Installs/updates all themes (except custom theme)
@@ -115,13 +115,13 @@ cd <repo>
 # 1. Install plugin in Pantheon dev
 # 2. Run sync
 ./bin/sync-manifest.sh phtech1
-git add manifest.json
+git add bin/manifest.json
 git commit -m "Add: WooCommerce 7.5.0"
 
 # Option 2: Via Local WP-CLI
 wp plugin install woocommerce --version=7.5.0 --activate
 ./bin/sync-manifest.sh phtech1  # Verify it matches
-git add manifest.json
+git add bin/manifest.json
 git commit -m "Add: WooCommerce 7.5.0"
 ```
 
@@ -130,7 +130,7 @@ git commit -m "Add: WooCommerce 7.5.0"
 # Update in Pantheon dev environment via dashboard
 ./bin/sync-manifest.sh phtech1
 ./bin/bootstrap-env.sh dev  # Test locally
-git add manifest.json
+git add bin/manifest.json
 git commit -m "Update: Jetpack 10.4 → 10.5"
 ```
 

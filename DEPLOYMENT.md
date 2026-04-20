@@ -4,11 +4,14 @@ This repository uses a **lightweight manifest-based approach** for WordPress dep
 
 ## 🎯 What's Version Controlled
 
-✅ **Tracked in Git:**
+✅ **Tracked in Git (NOT deployed to Pantheon):**
+- Deployment tools: `bin/` folder
+  - Environment manifest: `bin/manifest.json`
+  - Deployment scripts: `bin/*.sh`
+
+✅ **Tracked in Git AND deployed to Pantheon:**
 - Custom theme: `wp-content/themes/phcommunity.tech/`
 - Custom MU plugins (excluding Pantheon's)
-- Environment manifest: `manifest.json`
-- Deployment scripts: `bin/`
 
 ❌ **NOT Tracked (managed via manifest):**
 - WordPress core
@@ -65,7 +68,7 @@ git push pantheon master
 
 ### Sync Manifest from Pantheon
 
-Pull current state of all environments (dev, test, live, multidevs) into `manifest.json`:
+Pull current state of all environments (dev, test, live, multidevs) into `bin/manifest.json`:
 
 ```bash
 ./bin/sync-manifest.sh your-site-name
@@ -88,7 +91,7 @@ This captures:
 
 ### Bootstrap Local Environment
 
-Replicate any Pantheon environment locally from `manifest.json`:
+Replicate any Pantheon environment locally from `bin/manifest.json`:
 
 ```bash
 # Replicate dev environment
@@ -127,15 +130,17 @@ terminus rsync your-site-name.dev:files/ wp-content/uploads/
 ├── .github/
 │   └── workflows/
 │       └── deploy-pantheon.yml    # Auto-deployment workflow
-├── bin/
+├── bin/                           # ✅ Tracked in git, NOT deployed to Pantheon
+│   ├── manifest.json              # Environment state for all envs
 │   ├── sync-manifest.sh           # Pull environment state from Pantheon
-│   └── bootstrap-env.sh           # Replicate environment locally
+│   ├── bootstrap-env.sh           # Replicate environment locally
+│   ├── setup.sh                   # First-time setup
+│   └── README.md                  # Scripts documentation
 ├── wp-content/
 │   ├── themes/
-│   │   └── phcommunity.tech/      # ✅ Custom theme (tracked)
+│   │   └── phcommunity.tech/      # ✅ Custom theme (deployed)
 │   ├── plugins/                   # ❌ Not tracked (managed via manifest)
-│   └── mu-plugins/                # ✅ Custom MU plugins (tracked)
-├── manifest.json                  # ✅ Environment state (tracked)
+│   └── mu-plugins/                # ✅ Custom MU plugins (deployed)
 ├── .gitignore                     # Ignores WP core, plugins, themes
 └── DEPLOYMENT.md                  # This file
 ```
@@ -151,7 +156,7 @@ terminus rsync your-site-name.dev:files/ wp-content/uploads/
 ./bin/sync-manifest.sh your-site-name
 
 # 3. Commit updated manifest
-git add manifest.json
+git add bin/manifest.json
 git commit -m "Add plugin: plugin-name"
 git push
 ```
@@ -176,7 +181,7 @@ git push
 ./bin/sync-manifest.sh your-site-name
 
 # 3. Commit updated manifest
-git add manifest.json
+git add bin/manifest.json
 git commit -m "Update plugin: plugin-name to vX.Y.Z"
 git push
 ```
@@ -238,6 +243,7 @@ git push pantheon new-feature:new-feature
 ## 🛠️ Troubleshooting
 
 ### "Environment not found in manifest"
+Re-sync from Pantheon:
 ```bash
 ./bin/sync-manifest.sh your-site-name
 ```

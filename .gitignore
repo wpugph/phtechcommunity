@@ -17,7 +17,7 @@ wp-cli.local.yml
 
 # All Plugins (managed via manifest) #
 #######################################
-wp-content/plugins/
+wp-content/plugins/*
 !wp-content/plugins/.gitkeep
 
 # All Themes except custom (managed via manifest) #
@@ -30,6 +30,7 @@ wp-content/themes/*
 ######################################################
 wp-content/mu-plugins/pantheon/
 wp-content/mu-plugins/pantheon.php
+!wp-content/mu-plugins/.gitkeep
 
 # Uploads & Cache #
 ###################

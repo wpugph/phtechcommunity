@@ -8,7 +8,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-MANIFEST_FILE="$PROJECT_ROOT/manifest.json"
+MANIFEST_FILE="$SCRIPT_DIR/manifest.json"
 
 # Colors
 RED='\033[0;31m'
@@ -38,7 +38,7 @@ echo ""
 
 # Check if manifest exists
 if [ ! -f "$MANIFEST_FILE" ]; then
-    echo -e "${RED}Error: manifest.json not found. Run ./bin/sync-manifest.sh first${NC}"
+    echo -e "${RED}Error: bin/manifest.json not found. Run ./bin/sync-manifest.sh first${NC}"
     exit 1
 fi
 
