@@ -126,15 +126,34 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Wake dev environment
+          echo "Waking dev environment..."
           terminus env:wake "$SITE_NAME.dev" || true
+
+          # Wait a moment for environment to be ready
+          sleep 5
+
+          # Test WP-CLI connectivity
+          echo "Testing WP-CLI connection..."
+          if ! terminus wp "$SITE_NAME.dev" -- core version; then
+            echo "❌ ERROR: Cannot connect to WordPress via WP-CLI"
+            echo "This usually means:"
+            echo "  - Environment is not in SFTP mode"
+            echo "  - SSH keys are not configured"
+            echo "  - WordPress is not installed"
+            exit 1
+          fi
 
           # Get target versions from manifest
           WP_TARGET=$(jq -r ".environments.$SOURCE_ENV.wordpress.version // \"unknown\"" bin/manifest.json)
           THEME_TARGET=$(jq -r ".environments.$SOURCE_ENV.active_theme // \"unknown\"" bin/manifest.json)
 
           # Get current versions from Pantheon dev
-          WP_CURRENT=$(terminus wp "$SITE_NAME.dev" -- core version 2>/dev/null | grep -v "^\[" | grep -E "^[0-9]" || echo "unknown")
-          THEME_CURRENT=$(terminus wp "$SITE_NAME.dev" -- theme list --status=active --field=name 2>/dev/null | grep -v "^\[" | head -1 || echo "unknown")
+          WP_CURRENT=$(terminus wp "$SITE_NAME.dev" -- core version 2>&1 | grep -E "^[0-9]+\.[0-9]+" | head -1 || echo "unknown")
+          THEME_CURRENT=$(terminus wp "$SITE_NAME.dev" -- theme list --status=active --field=name 2>&1 | grep -v "^\[" | grep -v "^Command:" | grep -v "^Notice:" | head -1 || echo "unknown")
+
+          # Debug output
+          echo "WordPress - Target: $WP_TARGET, Current: $WP_CURRENT"
+          echo "Theme - Target: $THEME_TARGET, Current: $THEME_CURRENT"
 
           echo "wp_target=$WP_TARGET" >> $GITHUB_OUTPUT
           echo "wp_current=$WP_CURRENT" >> $GITHUB_OUTPUT
@@ -150,9 +169,24 @@ jobs:
 
           # Get plugins from manifest and current state
           jq -r ".environments.$SOURCE_ENV.plugins | to_entries[] | \"\(.key)|\(.value.version)|\(.value.status)\"" bin/manifest.json > /tmp/manifest_plugins.txt
-          terminus wp "$SITE_NAME.dev" -- plugin list --format=json 2>/dev/null | \
-            grep -v "^\[" | grep "^\[" | \
-            jq -r '.[] | "\(.name)|\(.version)|\(.status)"' > /tmp/current_plugins.txt || echo "" > /tmp/current_plugins.txt
+
+          # Get current plugins from Pantheon dev
+          # Capture full output, then extract JSON with jq
+          terminus wp "$SITE_NAME.dev" -- plugin list --format=json > /tmp/plugin_raw.txt 2>&1
+
+          # Extract and parse JSON (jq will find the JSON array in the output)
+          cat /tmp/plugin_raw.txt | jq -r '.[]? | "\(.name)|\(.version)|\(.status)"' > /tmp/current_plugins.txt 2>/dev/null || echo "" > /tmp/current_plugins.txt
+
+          # Debug: show what we got
+          echo "Plugins in manifest: $(wc -l < /tmp/manifest_plugins.txt)"
+          echo "Plugins in dev: $(wc -l < /tmp/current_plugins.txt)"
+          if [ ! -s /tmp/current_plugins.txt ]; then
+            echo "⚠️  Warning: No plugins found in dev. Raw output:"
+            cat /tmp/plugin_raw.txt | head -20
+          else
+            echo "Sample current plugins:"
+            head -5 /tmp/current_plugins.txt
+          fi
 
           # Compare and build action lists
           > /tmp/plugins_to_install.txt
@@ -187,9 +221,23 @@ jobs:
 
           # Get themes from manifest and current state
           jq -r ".environments.$SOURCE_ENV.themes | to_entries[] | \"\(.key)|\(.value.version)\"" bin/manifest.json > /tmp/manifest_themes.txt || echo "" > /tmp/manifest_themes.txt
-          terminus wp "$SITE_NAME.dev" -- theme list --format=json 2>/dev/null | \
-            grep -v "^\[" | grep "^\[" | \
-            jq -r '.[] | "\(.name)|\(.version)"' > /tmp/current_themes.txt || echo "" > /tmp/current_themes.txt
+
+          # Get current themes from Pantheon dev
+          terminus wp "$SITE_NAME.dev" -- theme list --format=json > /tmp/theme_raw.txt 2>&1
+
+          # Extract and parse JSON
+          cat /tmp/theme_raw.txt | jq -r '.[]? | "\(.name)|\(.version)"' > /tmp/current_themes.txt 2>/dev/null || echo "" > /tmp/current_themes.txt
+
+          # Debug: show what we got
+          echo "Themes in manifest: $(wc -l < /tmp/manifest_themes.txt)"
+          echo "Themes in dev: $(wc -l < /tmp/current_themes.txt)"
+          if [ ! -s /tmp/current_themes.txt ]; then
+            echo "⚠️  Warning: No themes found in dev. Raw output:"
+            cat /tmp/theme_raw.txt | head -20
+          else
+            echo "Sample current themes:"
+            head -5 /tmp/current_themes.txt
+          fi
 
           # Compare themes
           > /tmp/themes_to_install.txt
