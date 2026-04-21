@@ -240,3 +240,162 @@ jobs:
             git push
             echo "✅ Manifest committed and pushed"
           fi
+
+      - name: Deployment Summary
+        if: always()
+        run: |
+          echo "## 🚀 Pantheon Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Read summary JSON if it exists
+          if [ -f "bin/sync-summary.json" ]; then
+            SOURCE_ENV=$(jq -r '.source_env' bin/sync-summary.json)
+            TOTAL_ACTIONS=$(jq -r '.planned_actions.total' bin/sync-summary.json)
+            TOTAL_CHANGES=$(jq -r '.applied_changes.total' bin/sync-summary.json)
+            UNCHANGED=$(jq -r '.planned_actions.unchanged' bin/sync-summary.json)
+            COMMITTED=$(jq -r '.deployment.committed' bin/sync-summary.json)
+            DEPLOYED_TEST=$(jq -r '.deployment.deployed_to_test' bin/sync-summary.json)
+            DEPLOYED_LIVE=$(jq -r '.deployment.deployed_to_live' bin/sync-summary.json)
+
+            echo "**Source:** \`manifest.$SOURCE_ENV.json\`" >> $GITHUB_STEP_SUMMARY
+            echo "**Target:** Pantheon dev environment" >> $GITHUB_STEP_SUMMARY
+            echo "**Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            # Deployment status
+            echo "### 📦 Deployment Status" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Action | Status |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|--------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Committed to dev | $([ "$COMMITTED" = "true" ] && echo "✅ Yes" || echo "⏭️ Skipped") |" >> $GITHUB_STEP_SUMMARY
+            echo "| Deployed to test | $([ "$DEPLOYED_TEST" = "true" ] && echo "✅ Yes" || echo "⏭️ Skipped") |" >> $GITHUB_STEP_SUMMARY
+            echo "| Deployed to live | $([ "$DEPLOYED_LIVE" = "true" ] && echo "✅ Yes" || echo "⏭️ Skipped") |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            # Summary stats
+            echo "### 📊 Change Summary" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Actions Planned | $TOTAL_ACTIONS |" >> $GITHUB_STEP_SUMMARY
+            echo "| Changes Applied | $TOTAL_CHANGES |" >> $GITHUB_STEP_SUMMARY
+            echo "| Already in Sync | $UNCHANGED |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            # Plugin details
+            PLUGINS_INSTALLED=$(jq -r '.applied_changes.plugins_installed' bin/sync-summary.json)
+            PLUGINS_UPDATED=$(jq -r '.applied_changes.plugins_updated' bin/sync-summary.json)
+            PLUGINS_ACTIVATED=$(jq -r '.applied_changes.plugins_activated' bin/sync-summary.json)
+            PLUGINS_DEACTIVATED=$(jq -r '.applied_changes.plugins_deactivated' bin/sync-summary.json)
+            PLUGINS_UNINSTALLED=$(jq -r '.applied_changes.plugins_uninstalled' bin/sync-summary.json)
+
+            if [ "$PLUGINS_INSTALLED" -gt 0 ] || [ "$PLUGINS_UPDATED" -gt 0 ] || [ "$PLUGINS_ACTIVATED" -gt 0 ] || [ "$PLUGINS_DEACTIVATED" -gt 0 ] || [ "$PLUGINS_UNINSTALLED" -gt 0 ]; then
+              echo "### 🔌 Plugin Changes" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+
+              if [ "$PLUGINS_INSTALLED" -gt 0 ] && [ -f "bin/sync-plugins-installed.txt" ]; then
+                echo "**✅ Installed ($PLUGINS_INSTALLED):**" >> $GITHUB_STEP_SUMMARY
+                while IFS= read -r line; do
+                  echo "- $line" >> $GITHUB_STEP_SUMMARY
+                done < bin/sync-plugins-installed.txt
+                echo "" >> $GITHUB_STEP_SUMMARY
+              fi
+
+              if [ "$PLUGINS_UPDATED" -gt 0 ] && [ -f "bin/sync-plugins-updated.txt" ]; then
+                echo "**⬆️ Updated ($PLUGINS_UPDATED):**" >> $GITHUB_STEP_SUMMARY
+                while IFS= read -r line; do
+                  echo "- $line" >> $GITHUB_STEP_SUMMARY
+                done < bin/sync-plugins-updated.txt
+                echo "" >> $GITHUB_STEP_SUMMARY
+              fi
+
+              if [ "$PLUGINS_ACTIVATED" -gt 0 ] && [ -f "bin/sync-plugins-activated.txt" ]; then
+                echo "**⚡ Activated ($PLUGINS_ACTIVATED):**" >> $GITHUB_STEP_SUMMARY
+                while IFS= read -r line; do
+                  echo "- $line" >> $GITHUB_STEP_SUMMARY
+                done < bin/sync-plugins-activated.txt
+                echo "" >> $GITHUB_STEP_SUMMARY
+              fi
+
+              if [ "$PLUGINS_DEACTIVATED" -gt 0 ] && [ -f "bin/sync-plugins-deactivated.txt" ]; then
+                echo "**⏸️ Deactivated ($PLUGINS_DEACTIVATED):**" >> $GITHUB_STEP_SUMMARY
+                while IFS= read -r line; do
+                  echo "- $line" >> $GITHUB_STEP_SUMMARY
+                done < bin/sync-plugins-deactivated.txt
+                echo "" >> $GITHUB_STEP_SUMMARY
+              fi
+
+              if [ "$PLUGINS_UNINSTALLED" -gt 0 ] && [ -f "bin/sync-plugins-uninstalled.txt" ]; then
+                echo "**🗑️ Uninstalled ($PLUGINS_UNINSTALLED):**" >> $GITHUB_STEP_SUMMARY
+                while IFS= read -r line; do
+                  echo "- $line" >> $GITHUB_STEP_SUMMARY
+                done < bin/sync-plugins-uninstalled.txt
+                echo "" >> $GITHUB_STEP_SUMMARY
+              fi
+            fi
+
+            # Theme details
+            THEMES_INSTALLED=$(jq -r '.applied_changes.themes_installed' bin/sync-summary.json)
+            THEMES_UPDATED=$(jq -r '.applied_changes.themes_updated' bin/sync-summary.json)
+
+            if [ "$THEMES_INSTALLED" -gt 0 ] || [ "$THEMES_UPDATED" -gt 0 ]; then
+              echo "### 🎨 Theme Changes" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+
+              if [ "$THEMES_INSTALLED" -gt 0 ] && [ -f "bin/sync-themes-installed.txt" ]; then
+                echo "**✅ Installed ($THEMES_INSTALLED):**" >> $GITHUB_STEP_SUMMARY
+                while IFS= read -r line; do
+                  echo "- $line" >> $GITHUB_STEP_SUMMARY
+                done < bin/sync-themes-installed.txt
+                echo "" >> $GITHUB_STEP_SUMMARY
+              fi
+
+              if [ "$THEMES_UPDATED" -gt 0 ] && [ -f "bin/sync-themes-updated.txt" ]; then
+                echo "**⬆️ Updated ($THEMES_UPDATED):**" >> $GITHUB_STEP_SUMMARY
+                while IFS= read -r line; do
+                  echo "- $line" >> $GITHUB_STEP_SUMMARY
+                done < bin/sync-themes-updated.txt
+                echo "" >> $GITHUB_STEP_SUMMARY
+              fi
+            fi
+
+            # Skipped/Failed plugins
+            if [ -f "bin/sync-plugins-skipped.txt" ] && [ -s "bin/sync-plugins-skipped.txt" ]; then
+              SKIPPED_COUNT=$(wc -l < bin/sync-plugins-skipped.txt | xargs)
+              FAILED_COUNT=$(jq -r '.planned_actions.install' bin/sync-summary.json)
+              SUCCESS_COUNT=$(jq -r '.applied_changes.plugins_installed' bin/sync-summary.json)
+              ACTUAL_FAILED=$((FAILED_COUNT - SUCCESS_COUNT))
+
+              if [ "$ACTUAL_FAILED" -gt 0 ]; then
+                echo "### ⚠️ Failed Installations" >> $GITHUB_STEP_SUMMARY
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo "**❌ Not available in WordPress.org ($ACTUAL_FAILED):**" >> $GITHUB_STEP_SUMMARY
+                echo "> These are likely custom plugins that need to be deployed via git" >> $GITHUB_STEP_SUMMARY
+                echo "" >> $GITHUB_STEP_SUMMARY
+                head -n $ACTUAL_FAILED bin/sync-plugins-skipped.txt | while IFS='|' read -r slug version status; do
+                  echo "- \`$slug\` (v$version)" >> $GITHUB_STEP_SUMMARY
+                done
+                echo "" >> $GITHUB_STEP_SUMMARY
+              fi
+            fi
+
+            # WordPress version
+            WP_CURRENT=$(jq -r '.versions.wordpress.current' bin/sync-summary.json)
+            WP_TARGET=$(jq -r '.versions.wordpress.target' bin/sync-summary.json)
+            THEME_CURRENT=$(jq -r '.versions.theme.current' bin/sync-summary.json)
+            THEME_TARGET=$(jq -r '.versions.theme.target' bin/sync-summary.json)
+
+            echo "### 📌 Version Info" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Component | Version |" >> $GITHUB_STEP_SUMMARY
+            echo "|-----------|---------|" >> $GITHUB_STEP_SUMMARY
+            echo "| WordPress | $WP_CURRENT $([ "$WP_CURRENT" != "$WP_TARGET" ] && echo "(target: $WP_TARGET)" || echo "") |" >> $GITHUB_STEP_SUMMARY
+            echo "| Active Theme | $THEME_CURRENT $([ "$THEME_CURRENT" != "$THEME_TARGET" ] && echo "(target: $THEME_TARGET)" || echo "") |" >> $GITHUB_STEP_SUMMARY
+
+          else
+            echo "⚠️ No summary data available" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "*Generated by [Sync Pantheon from Manifest workflow](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})*" >> $GITHUB_STEP_SUMMARY

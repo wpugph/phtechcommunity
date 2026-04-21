@@ -859,4 +859,117 @@ echo "Deployed to test:  $DEPLOY_TO_TEST"
 echo "Deployed to live:  $DEPLOY_TO_LIVE"
 echo ""
 
+# Write summary to file for workflow consumption
+SUMMARY_FILE="$SCRIPT_DIR/sync-summary.json"
+jq -n \
+  --arg source_env "$SOURCE_ENV" \
+  --argjson total_actions "$TOTAL_ACTIONS" \
+  --argjson total_changes "$TOTAL_CHANGES" \
+  --argjson unchanged_count "$UNCHANGED_COUNT" \
+  --argjson install_count "$INSTALL_COUNT" \
+  --argjson update_count "$UPDATE_COUNT" \
+  --argjson activate_count "$ACTIVATE_COUNT" \
+  --argjson deactivate_count "$DEACTIVATE_COUNT" \
+  --argjson uninstall_count "$UNINSTALL_COUNT" \
+  --argjson theme_install_count "$THEME_INSTALL_COUNT" \
+  --argjson theme_update_count "$THEME_UPDATE_COUNT" \
+  --argjson plugins_installed "$PLUGINS_INSTALLED" \
+  --argjson plugins_updated "$PLUGINS_UPDATED" \
+  --argjson plugins_activated "$PLUGINS_ACTIVATED" \
+  --argjson plugins_deactivated "$PLUGINS_DEACTIVATED" \
+  --argjson plugins_uninstalled "$PLUGINS_UNINSTALLED" \
+  --argjson themes_installed "$THEMES_INSTALLED" \
+  --argjson themes_updated "$THEMES_UPDATED" \
+  --argjson wp_changed "$WP_CHANGED" \
+  --argjson commit_changes "$([ "$COMMIT_CHANGES" = true ] && echo true || echo false)" \
+  --argjson deploy_test "$([ "$DEPLOY_TO_TEST" = true ] && echo true || echo false)" \
+  --argjson deploy_live "$([ "$DEPLOY_TO_LIVE" = true ] && echo true || echo false)" \
+  --arg wp_current "$WP_CURRENT" \
+  --arg wp_target "$WP_TARGET" \
+  --arg theme_current "$THEME_CURRENT" \
+  --arg theme_target "$THEME_TARGET" \
+  '{
+    source_env: $source_env,
+    planned_actions: {
+      total: $total_actions,
+      unchanged: $unchanged_count,
+      install: $install_count,
+      update: $update_count,
+      activate: $activate_count,
+      deactivate: $deactivate_count,
+      uninstall: $uninstall_count,
+      theme_install: $theme_install_count,
+      theme_update: $theme_update_count
+    },
+    applied_changes: {
+      total: $total_changes,
+      wordpress_changed: $wp_changed,
+      plugins_installed: $plugins_installed,
+      plugins_updated: $plugins_updated,
+      plugins_activated: $plugins_activated,
+      plugins_deactivated: $plugins_deactivated,
+      plugins_uninstalled: $plugins_uninstalled,
+      themes_installed: $themes_installed,
+      themes_updated: $themes_updated
+    },
+    deployment: {
+      committed: $commit_changes,
+      deployed_to_test: $deploy_test,
+      deployed_to_live: $deploy_live
+    },
+    versions: {
+      wordpress: { current: $wp_current, target: $wp_target },
+      theme: { current: $theme_current, target: $theme_target }
+    }
+  }' > "$SUMMARY_FILE"
+
+# Copy detail files to bin for workflow access
+if [ -f "$TMP_DIR/plugins_installed.txt" ] && [ -s "$TMP_DIR/plugins_installed.txt" ]; then
+  cp "$TMP_DIR/plugins_installed.txt" "$SCRIPT_DIR/sync-plugins-installed.txt"
+else
+  rm -f "$SCRIPT_DIR/sync-plugins-installed.txt"
+fi
+
+if [ -f "$TMP_DIR/plugins_updated.txt" ] && [ -s "$TMP_DIR/plugins_updated.txt" ]; then
+  cp "$TMP_DIR/plugins_updated.txt" "$SCRIPT_DIR/sync-plugins-updated.txt"
+else
+  rm -f "$SCRIPT_DIR/sync-plugins-updated.txt"
+fi
+
+if [ -f "$TMP_DIR/plugins_activated.txt" ] && [ -s "$TMP_DIR/plugins_activated.txt" ]; then
+  cp "$TMP_DIR/plugins_activated.txt" "$SCRIPT_DIR/sync-plugins-activated.txt"
+else
+  rm -f "$SCRIPT_DIR/sync-plugins-activated.txt"
+fi
+
+if [ -f "$TMP_DIR/plugins_deactivated.txt" ] && [ -s "$TMP_DIR/plugins_deactivated.txt" ]; then
+  cp "$TMP_DIR/plugins_deactivated.txt" "$SCRIPT_DIR/sync-plugins-deactivated.txt"
+else
+  rm -f "$SCRIPT_DIR/sync-plugins-deactivated.txt"
+fi
+
+if [ -f "$TMP_DIR/plugins_uninstalled.txt" ] && [ -s "$TMP_DIR/plugins_uninstalled.txt" ]; then
+  cp "$TMP_DIR/plugins_uninstalled.txt" "$SCRIPT_DIR/sync-plugins-uninstalled.txt"
+else
+  rm -f "$SCRIPT_DIR/sync-plugins-uninstalled.txt"
+fi
+
+if [ -f "$TMP_DIR/themes_installed.txt" ] && [ -s "$TMP_DIR/themes_installed.txt" ]; then
+  cp "$TMP_DIR/themes_installed.txt" "$SCRIPT_DIR/sync-themes-installed.txt"
+else
+  rm -f "$SCRIPT_DIR/sync-themes-installed.txt"
+fi
+
+if [ -f "$TMP_DIR/themes_updated.txt" ] && [ -s "$TMP_DIR/themes_updated.txt" ]; then
+  cp "$TMP_DIR/themes_updated.txt" "$SCRIPT_DIR/sync-themes-updated.txt"
+else
+  rm -f "$SCRIPT_DIR/sync-themes-updated.txt"
+fi
+
+if [ -f "$TMP_DIR/plugins_to_install.txt" ] && [ -s "$TMP_DIR/plugins_to_install.txt" ]; then
+  cp "$TMP_DIR/plugins_to_install.txt" "$SCRIPT_DIR/sync-plugins-skipped.txt"
+else
+  rm -f "$SCRIPT_DIR/sync-plugins-skipped.txt"
+fi
+
 echo "✅ Script completed successfully"
