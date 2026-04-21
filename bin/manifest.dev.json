@@ -6,11 +6,11 @@
     "version": "6.9.4",
     "db_version": "unknown"
   },
-  "php_version": "7.4",
+  "php_version": "8.5",
   "plugins": {},
   "themes": {},
   "mu_plugins": {},
   "active_theme": "astra",
   "multisite": false,
-  "last_updated": "2026-04-21T05:36:28Z"
+  "last_updated": "2026-04-21T05:43:05Z"
 }
