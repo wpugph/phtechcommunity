@@ -149,8 +149,9 @@ else
 fi
 
 # Debug: show plugin count
-PLUGIN_COUNT=$(echo "$PLUGINS_JSON" | jq 'length' 2>/dev/null || echo "0")
+PLUGIN_COUNT=$(echo "$PLUGINS_JSON" | jq 'length' 2>&1 | grep -E '^[0-9]+$' || echo "0")
 echo "  Plugins found: $PLUGIN_COUNT" >&2
+echo "  Debug: PLUGINS_JSON first 200 chars = ${PLUGINS_JSON:0:200}" >&2
 
 # Get themes (robust JSON extraction)
 THEMES_RAW=$(terminus wp "$SITE_NAME.$ENV" -- theme list --format=json 2>&1)
@@ -167,8 +168,9 @@ else
 fi
 
 # Debug: show theme count
-THEME_COUNT=$(echo "$THEMES_JSON" | jq 'length' 2>/dev/null || echo "0")
+THEME_COUNT=$(echo "$THEMES_JSON" | jq 'length' 2>&1 | grep -E '^[0-9]+$' || echo "0")
 echo "  Themes found: $THEME_COUNT" >&2
+echo "  Debug: THEMES_JSON first 200 chars = ${THEMES_JSON:0:200}" >&2
 
 # Get active theme
 ACTIVE_THEME=$(terminus wp "$SITE_NAME.$ENV" -- theme list --status=active --field=name 2>&1 | grep -v "^\[" | grep -v "^Command:" | head -1 || echo "unknown")
@@ -201,10 +203,12 @@ else
 fi
 
 # Debug: show what we're passing
-echo "  Debug: PLUGINS_OBJ length = ${#PLUGINS_OBJ} chars" >&2
-echo "  Debug: THEMES_OBJ length = ${#THEMES_OBJ} chars" >&2
-echo "  Debug: PLUGINS_OBJ first 100 chars = ${PLUGINS_OBJ:0:100}" >&2
-echo "  Debug: THEMES_OBJ first 100 chars = ${THEMES_OBJ:0:100}" >&2
+echo "  Debug: WP_VERSION = $WP_VERSION" >&2
+echo "  Debug: PHP_VERSION = $PHP_VERSION" >&2
+echo "  Debug: ACTIVE_THEME = $ACTIVE_THEME" >&2
+echo "  Debug: IS_MULTISITE = $IS_MULTISITE" >&2
+echo "  Debug: PLUGINS_OBJ length = ${#PLUGINS_OBJ} chars, content = ${PLUGINS_OBJ:0:100}" >&2
+echo "  Debug: THEMES_OBJ length = ${#THEMES_OBJ} chars, content = ${THEMES_OBJ:0:100}" >&2
 
 # Build JSON using reusable script
 "$SCRIPT_DIR/generate-manifest-json.sh" "$SITE_NAME" "$SITE_UUID" "$ENV" "$WP_VERSION" "$PHP_VERSION" "$PLUGINS_OBJ" "$THEMES_OBJ" "$ACTIVE_THEME" "$IS_MULTISITE"
