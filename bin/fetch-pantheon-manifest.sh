@@ -149,7 +149,10 @@ else
 fi
 
 # Debug: show plugin count
-PLUGIN_COUNT=$(echo "$PLUGINS_JSON" | jq 'length' 2>&1 | grep -E '^[0-9]+$' || echo "0")
+PLUGIN_COUNT=$(echo "$PLUGINS_JSON" | jq 'length' 2>&1 | grep -E '^[0-9]+$' | head -1)
+if [ -z "$PLUGIN_COUNT" ]; then
+  PLUGIN_COUNT="0"
+fi
 echo "  Plugins found: $PLUGIN_COUNT" >&2
 echo "  Debug: PLUGINS_JSON first 200 chars = ${PLUGINS_JSON:0:200}" >&2
 
@@ -168,7 +171,10 @@ else
 fi
 
 # Debug: show theme count
-THEME_COUNT=$(echo "$THEMES_JSON" | jq 'length' 2>&1 | grep -E '^[0-9]+$' || echo "0")
+THEME_COUNT=$(echo "$THEMES_JSON" | jq 'length' 2>&1 | grep -E '^[0-9]+$' | head -1)
+if [ -z "$THEME_COUNT" ]; then
+  THEME_COUNT="0"
+fi
 echo "  Themes found: $THEME_COUNT" >&2
 echo "  Debug: THEMES_JSON first 200 chars = ${THEMES_JSON:0:200}" >&2
 
@@ -182,18 +188,29 @@ IS_MULTISITE=$(terminus wp "$SITE_NAME.$ENV" -- eval 'echo is_multisite() ? "tru
 if [ "$PLUGINS_JSON" = "[]" ] || [ -z "$PLUGINS_JSON" ]; then
   PLUGINS_OBJ="{}"
 else
-  # Try to transform
-  set +e  # Temporarily disable exit on error
-  PLUGINS_OBJ=$(echo "$PLUGINS_JSON" | jq -c 'map({(.name): {version: .version, status: .status, update: .update, update_version: .update_version}}) | add // {}' 2>&1)
-  JQ_EXIT=$?
-  set -e  # Re-enable exit on error
+  # First validate the JSON is parseable
+  set +e
+  echo "$PLUGINS_JSON" | jq '.' >/dev/null 2>&1
+  VALIDATE_EXIT=$?
+  set -e
 
-  if [ $JQ_EXIT -ne 0 ]; then
-    echo "  ⚠️  jq transformation failed for plugins (exit $JQ_EXIT): ${PLUGINS_OBJ:0:200}" >&2
+  if [ $VALIDATE_EXIT -ne 0 ]; then
+    echo "  ⚠️  Plugins JSON is invalid, cannot parse" >&2
     PLUGINS_OBJ="{}"
-  elif [ -z "$PLUGINS_OBJ" ] || [ "$PLUGINS_OBJ" = "null" ]; then
-    echo "  ⚠️  Could not process plugins to object format, using empty" >&2
-    PLUGINS_OBJ="{}"
+  else
+    # Try to transform - use simpler transformation without update_version to avoid issues
+    set +e
+    PLUGINS_OBJ=$(echo "$PLUGINS_JSON" | jq -c 'map({(.name): {version: .version, status: .status, update: .update}}) | add // {}' 2>&1)
+    JQ_EXIT=$?
+    set -e
+
+    if [ $JQ_EXIT -ne 0 ]; then
+      echo "  ⚠️  jq transformation failed for plugins (exit $JQ_EXIT)" >&2
+      PLUGINS_OBJ="{}"
+    elif [ -z "$PLUGINS_OBJ" ] || [ "$PLUGINS_OBJ" = "null" ]; then
+      echo "  ⚠️  Could not process plugins to object format, using empty" >&2
+      PLUGINS_OBJ="{}"
+    fi
   fi
 fi
 
