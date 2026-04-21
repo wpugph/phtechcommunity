@@ -148,22 +148,8 @@ jobs:
               fi
               echo "" >&2
               echo "  Returning minimal data for $ENV" >&2
-              # Return minimal valid JSON using printf (simpler than jq)
-              TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-              printf '{
-  "site_name": "%s",
-  "site_id": "%s",
-  "environment": "%s",
-  "wordpress": {"version": "unknown", "db_version": "unknown"},
-  "php_version": "unknown",
-  "plugins": {},
-  "themes": {},
-  "mu_plugins": {},
-  "active_theme": "unknown",
-  "multisite": false,
-  "last_updated": "%s",
-  "error": "WP-CLI connectivity failed"
-}\n' "$SITE_NAME" "$SITE_UUID" "$ENV" "$TIMESTAMP"
+              # Use reusable script for JSON generation
+              bin/generate-manifest-json.sh --error "$SITE_NAME" "$SITE_UUID" "$ENV"
               return 0
             fi
             echo "  ✓ WP-CLI connected" >&2
@@ -233,35 +219,8 @@ jobs:
               THEMES_OBJ=$(echo "$THEMES_JSON" | jq -c 'map({(.name): {version: .version, status: .status, update: .update}}) | add // {}' 2>/dev/null || echo "{}")
             fi
 
-            # Build JSON using jq (safer than heredoc)
-            TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-            jq -n \
-              --arg site_name "$SITE_NAME" \
-              --arg site_id "$SITE_UUID" \
-              --arg env "$ENV" \
-              --arg wp_version "$WP_VERSION" \
-              --arg php_version "$PHP_VERSION" \
-              --argjson plugins "$PLUGINS_OBJ" \
-              --argjson themes "$THEMES_OBJ" \
-              --arg active_theme "$ACTIVE_THEME" \
-              --argjson is_multisite "$IS_MULTISITE" \
-              --arg timestamp "$TIMESTAMP" \
-              '{
-                "site_name": $site_name,
-                "site_id": $site_id,
-                "environment": $env,
-                "wordpress": {
-                  "version": $wp_version,
-                  "db_version": "unknown"
-                },
-                "php_version": $php_version,
-                "plugins": $plugins,
-                "themes": $themes,
-                "mu_plugins": {},
-                "active_theme": $active_theme,
-                "multisite": $is_multisite,
-                "last_updated": $timestamp
-              }'
+            # Build JSON using reusable script
+            bin/generate-manifest-json.sh "$SITE_NAME" "$SITE_UUID" "$ENV" "$WP_VERSION" "$PHP_VERSION" "$PLUGINS_OBJ" "$THEMES_OBJ" "$ACTIVE_THEME" "$IS_MULTISITE"
           }
 
           # Determine which environments to sync
