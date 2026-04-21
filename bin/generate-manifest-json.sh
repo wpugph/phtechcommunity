@@ -16,23 +16,36 @@ SITE_NAME="${1:-unknown}"
 SITE_UUID="${2:-unknown}"
 ENV="${3:-unknown}"
 
+# GitHub Actions masks secrets, so site name might be "***"
+# Use UUID to derive site name if needed
+if [ "$SITE_NAME" = "***" ] || [ "$SITE_NAME" = "unknown" ]; then
+  if [ "$SITE_UUID" = "4bf58ee6-abd8-47c2-a6c9-f839ae0aa50c" ]; then
+    SITE_NAME="eventsph"
+  fi
+fi
+
 if [ "$ERROR_MODE" = "true" ]; then
-  # Generate minimal error JSON
+  # Generate minimal error JSON using jq to avoid escaping issues
   TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-  printf '{
-  "site_name": "%s",
-  "site_id": "%s",
-  "environment": "%s",
-  "wordpress": {"version": "unknown", "db_version": "unknown"},
-  "php_version": "unknown",
-  "plugins": {},
-  "themes": {},
-  "mu_plugins": {},
-  "active_theme": "unknown",
-  "multisite": false,
-  "last_updated": "%s",
-  "error": "WP-CLI connectivity failed"
-}\n' "$SITE_NAME" "$SITE_UUID" "$ENV" "$TIMESTAMP"
+  jq -n \
+    --arg site_name "$SITE_NAME" \
+    --arg site_id "$SITE_UUID" \
+    --arg env "$ENV" \
+    --arg timestamp "$TIMESTAMP" \
+    '{
+      "site_name": $site_name,
+      "site_id": $site_id,
+      "environment": $env,
+      "wordpress": {"version": "unknown", "db_version": "unknown"},
+      "php_version": "unknown",
+      "plugins": {},
+      "themes": {},
+      "mu_plugins": {},
+      "active_theme": "unknown",
+      "multisite": false,
+      "last_updated": $timestamp,
+      "error": "WP-CLI connectivity failed"
+    }'
 else
   # Generate full manifest JSON
   WP_VERSION="${4:-unknown}"
