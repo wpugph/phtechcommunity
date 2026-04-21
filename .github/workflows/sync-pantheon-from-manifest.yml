@@ -645,7 +645,7 @@ jobs:
           echo "Total: $COUNTER processed, $(wc -l < /tmp/plugins_updated.txt | xargs) succeeded"
 
       - name: Activate plugins
-        if: fromJSON(steps.compare.outputs.plugins_activate_count) > 0
+        if: steps.compare.outputs.has_changes == 'true' && fromJSON(steps.compare.outputs.plugins_activate_count) > 0
         env:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
         run: |
@@ -669,7 +669,7 @@ jobs:
           echo "Total: $(wc -l < /tmp/plugins_activated.txt | xargs)/$TOTAL activated"
 
       - name: Deactivate plugins
-        if: fromJSON(steps.compare.outputs.plugins_deactivate_count) > 0
+        if: steps.compare.outputs.has_changes == 'true' && fromJSON(steps.compare.outputs.plugins_deactivate_count) > 0
         env:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
         run: |
@@ -693,7 +693,7 @@ jobs:
           echo "Total: $(wc -l < /tmp/plugins_deactivated.txt | xargs)/$TOTAL deactivated"
 
       - name: Uninstall plugins not in manifest
-        if: fromJSON(steps.compare.outputs.plugins_uninstall_count) > 0
+        if: steps.compare.outputs.has_changes == 'true' && fromJSON(steps.compare.outputs.plugins_uninstall_count) > 0
         env:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
         run: |
@@ -719,7 +719,7 @@ jobs:
           echo "Total: $(wc -l < /tmp/plugins_uninstalled.txt | xargs)/$TOTAL uninstalled"
 
       - name: Install new themes
-        if: fromJSON(steps.compare.outputs.themes_install_count) > 0
+        if: steps.compare.outputs.has_changes == 'true' && fromJSON(steps.compare.outputs.themes_install_count) > 0
         env:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
         run: |
@@ -738,7 +738,7 @@ jobs:
           echo "Total installed: $(wc -l < /tmp/themes_installed.txt | xargs)"
 
       - name: Update existing themes
-        if: fromJSON(steps.compare.outputs.themes_update_count) > 0
+        if: steps.compare.outputs.has_changes == 'true' && fromJSON(steps.compare.outputs.themes_update_count) > 0
         env:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
         run: |
@@ -758,7 +758,7 @@ jobs:
           echo "Total updated: $(wc -l < /tmp/themes_updated.txt | xargs)"
 
       - name: Activate theme
-        if: steps.compare.outputs.theme_current != steps.compare.outputs.theme_target
+        if: steps.compare.outputs.has_changes == 'true' && steps.compare.outputs.theme_current != steps.compare.outputs.theme_target
         env:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
           THEME_TARGET: ${{ steps.compare.outputs.theme_target }}
@@ -857,7 +857,7 @@ jobs:
           terminus env:commit "$SITE_NAME.dev" --message="$(cat /tmp/commit_message.txt)" || echo "⚠️ No changes to commit or commit failed"
 
       - name: Update manifest with current Pantheon dev state
-        if: fromJSON(steps.compare.outputs.total_actions) > 0
+        if: steps.compare.outputs.has_changes == 'true'
         env:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
         run: |
@@ -951,7 +951,7 @@ jobs:
           echo "✅ Manifest updated: bin/manifest.dev.json"
 
       - name: Commit updated manifest
-        if: fromJSON(steps.compare.outputs.total_actions) > 0
+        if: steps.compare.outputs.has_changes == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
