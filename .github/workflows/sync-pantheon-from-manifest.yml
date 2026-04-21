@@ -52,6 +52,9 @@ jobs:
           sparse-checkout: |
             bin/
             .github/
+            wp-content/themes/
+            wp-content/plugins/
+            wp-content/mu-plugins/
 
       - name: Cache Terminus
         id: cache-terminus
@@ -76,11 +79,31 @@ jobs:
           # Install jq (fast, no need to cache)
           sudo apt-get update -qq && sudo apt-get install -y -qq jq >/dev/null 2>&1
 
+      - name: Authenticate with Pantheon
+        env:
+          TERMINUS_TOKEN: ${{ secrets.PANTHEON_MACHINE_TOKEN }}
+        run: |
+          terminus auth:login --machine-token="$TERMINUS_TOKEN"
+
+      - name: Setup SSH for Pantheon
+        env:
+          PANTHEON_SSH_KEY: ${{ secrets.PANTHEON_SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          echo "$PANTHEON_SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          cat >> ~/.ssh/config <<EOF
+          Host *.drush.in
+              StrictHostKeyChecking no
+              UserKnownHostsFile=/dev/null
+          EOF
+          chmod 600 ~/.ssh/config
+
       - name: Deploy custom code to Pantheon
         env:
           TERMINUS_TOKEN: ${{ secrets.PANTHEON_MACHINE_TOKEN }}
           PANTHEON_SITE_NAME: ${{ secrets.PANTHEON_SITE_NAME }}
-          PANTHEON_SSH_KEY: ${{ secrets.PANTHEON_SSH_PRIVATE_KEY }}
         run: |
           echo "Deploying custom themes, plugins, and symlinks to Pantheon dev..."
 
@@ -94,10 +117,9 @@ jobs:
         env:
           TERMINUS_TOKEN: ${{ secrets.PANTHEON_MACHINE_TOKEN }}
           PANTHEON_SITE_NAME: ${{ secrets.PANTHEON_SITE_NAME }}
-          PANTHEON_SSH_KEY: ${{ secrets.PANTHEON_SSH_PRIVATE_KEY }}
         run: |
           # Build options from workflow inputs
-          OPTIONS="--skip-auth"  # Already authenticated in previous step
+          OPTIONS="--skip-auth --skip-ssh-setup"  # Already authenticated and SSH setup done
           [ "${{ github.event.inputs.source_env }}" != "dev" ] && OPTIONS="$OPTIONS --source-env ${{ github.event.inputs.source_env }}"
           [ "${{ github.event.inputs.force_reinstall }}" = "true" ] && OPTIONS="$OPTIONS --force"
           [ "${{ github.event.inputs.commit_changes }}" = "true" ] && OPTIONS="$OPTIONS --commit"
