@@ -47,11 +47,11 @@ echo "  Current mode: $CONN_MODE" >&2
 
 if [ "$CONN_MODE" = "git" ]; then
   echo "  Switching to SFTP mode (required for WP-CLI)..." >&2
-  terminus connection:set "$SITE_NAME.$ENV" sftp 2>&1 | head -1 >&2 || true
+  terminus connection:set "$SITE_NAME.$ENV" sftp --yes 2>&1 | head -1 >&2 || true
   sleep 3
 elif [ "$CONN_MODE" = "unknown" ] || echo "$CONN_MODE" | grep -qi "requested"; then
   echo "  Attempting to set SFTP mode anyway..." >&2
-  terminus connection:set "$SITE_NAME.$ENV" sftp 2>&1 | head -3 >&2 || true
+  terminus connection:set "$SITE_NAME.$ENV" sftp --yes 2>&1 | head -3 >&2 || true
   sleep 3
 fi
 
