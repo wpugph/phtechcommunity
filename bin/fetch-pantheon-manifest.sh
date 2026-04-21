@@ -180,8 +180,9 @@ IS_MULTISITE=$(terminus wp "$SITE_NAME.$ENV" -- eval 'echo is_multisite() ? "tru
 if [ "$PLUGINS_JSON" = "[]" ] || [ -z "$PLUGINS_JSON" ]; then
   PLUGINS_OBJ="{}"
 else
-  PLUGINS_OBJ=$(echo "$PLUGINS_JSON" | jq -c 'map({(.name): {version: .version, status: .status, update: .update, update_version: .update_version}}) | add // {}' 2>/dev/null)
-  if [ $? -ne 0 ] || [ -z "$PLUGINS_OBJ" ] || [ "$PLUGINS_OBJ" = "null" ] || ! echo "$PLUGINS_OBJ" | jq -e '.' >/dev/null 2>&1; then
+  PLUGINS_OBJ=$(echo "$PLUGINS_JSON" | jq -c 'map({(.name): {version: .version, status: .status, update: .update, update_version: .update_version}}) | add // {}' 2>/dev/null) || PLUGINS_OBJ=""
+  # Simple validation: check if it looks like valid JSON
+  if [ -z "$PLUGINS_OBJ" ] || [ "$PLUGINS_OBJ" = "null" ]; then
     echo "  ⚠️  Could not process plugins to object format, using empty" >&2
     PLUGINS_OBJ="{}"
   fi
@@ -191,8 +192,9 @@ fi
 if [ "$THEMES_JSON" = "[]" ] || [ -z "$THEMES_JSON" ]; then
   THEMES_OBJ="{}"
 else
-  THEMES_OBJ=$(echo "$THEMES_JSON" | jq -c 'map({(.name): {version: .version, status: .status, update: .update}}) | add // {}' 2>/dev/null)
-  if [ $? -ne 0 ] || [ -z "$THEMES_OBJ" ] || [ "$THEMES_OBJ" = "null" ] || ! echo "$THEMES_OBJ" | jq -e '.' >/dev/null 2>&1; then
+  THEMES_OBJ=$(echo "$THEMES_JSON" | jq -c 'map({(.name): {version: .version, status: .status, update: .update}}) | add // {}' 2>/dev/null) || THEMES_OBJ=""
+  # Simple validation: check if it looks like valid JSON
+  if [ -z "$THEMES_OBJ" ] || [ "$THEMES_OBJ" = "null" ]; then
     echo "  ⚠️  Could not process themes to object format, using empty" >&2
     THEMES_OBJ="{}"
   fi
