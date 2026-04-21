@@ -149,7 +149,7 @@ else
 fi
 
 # Debug: show plugin count
-PLUGIN_COUNT=$(echo "$PLUGINS_JSON" | jq 'length' 2>&1 | grep -E '^[0-9]+$' | head -1)
+PLUGIN_COUNT=$(echo "$PLUGINS_JSON" | jq 'length' 2>&1 | grep -E '^[0-9]+$' | head -1 || true)
 if [ -z "$PLUGIN_COUNT" ]; then
   PLUGIN_COUNT="0"
 fi
@@ -171,7 +171,7 @@ else
 fi
 
 # Debug: show theme count
-THEME_COUNT=$(echo "$THEMES_JSON" | jq 'length' 2>&1 | grep -E '^[0-9]+$' | head -1)
+THEME_COUNT=$(echo "$THEMES_JSON" | jq 'length' 2>&1 | grep -E '^[0-9]+$' | head -1 || true)
 if [ -z "$THEME_COUNT" ]; then
   THEME_COUNT="0"
 fi
