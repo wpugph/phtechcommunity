@@ -134,12 +134,12 @@ PHP_VERSION=$(terminus env:info "$SITE_NAME.$ENV" --field=php_version 2>/dev/nul
 # Get plugins (robust JSON extraction)
 PLUGINS_RAW=$(terminus wp "$SITE_NAME.$ENV" -- plugin list --format=json 2>&1)
 
-# Extract ONLY the JSON array: everything from first [{ to last }]
-# Step 1: Remove everything before [{
-# Step 2: Remove everything after the last }]
-PLUGINS_JSON=$(echo "$PLUGINS_RAW" | sed 's/.*\(\[\{.*\}\]\).*/\1/')
+# Extract ONLY the JSON array using parameter expansion
+# Remove everything before [{ and everything after }]
+TEMP="${PLUGINS_RAW#*\[{}"  # Remove everything before [{
+PLUGINS_JSON="[{${TEMP%\]*}"  # Prepend [{ and remove everything after the last ]
 
-# If extraction failed (no match), try simpler pattern
+# If extraction failed, set to empty array
 if [ -z "$PLUGINS_JSON" ] || [[ ! "$PLUGINS_JSON" =~ ^\[ ]]; then
   echo "  ⚠️  Could not extract plugins JSON array" >&2
   echo "  Raw output (first 300 chars): ${PLUGINS_RAW:0:300}" >&2
@@ -169,12 +169,12 @@ echo "  Debug: PLUGINS_JSON first 200 chars = ${PLUGINS_JSON:0:200}" >&2
 # Get themes (robust JSON extraction)
 THEMES_RAW=$(terminus wp "$SITE_NAME.$ENV" -- theme list --format=json 2>&1)
 
-# Extract ONLY the JSON array: everything from first [{ to last }]
-# Step 1: Remove everything before [{
-# Step 2: Remove everything after the last }]
-THEMES_JSON=$(echo "$THEMES_RAW" | sed 's/.*\(\[\{.*\}\]\).*/\1/')
+# Extract ONLY the JSON array using parameter expansion
+# Remove everything before [{ and everything after }]
+TEMP="${THEMES_RAW#*\[{}"  # Remove everything before [{
+THEMES_JSON="[{${TEMP%\]*}"  # Prepend [{ and remove everything after the last ]
 
-# If extraction failed (no match), try simpler pattern
+# If extraction failed, set to empty array
 if [ -z "$THEMES_JSON" ] || [[ ! "$THEMES_JSON" =~ ^\[ ]]; then
   echo "  ⚠️  Could not extract themes JSON array" >&2
   echo "  Raw output (first 300 chars): ${THEMES_RAW:0:300}" >&2
