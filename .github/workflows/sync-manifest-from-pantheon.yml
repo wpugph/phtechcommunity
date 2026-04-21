@@ -99,7 +99,12 @@ jobs:
             done
 
             if [ "$WP_CLI_READY" = "false" ]; then
-              echo "  ❌ ERROR: Cannot connect to WordPress via WP-CLI" >&2
+              echo "  ❌ ERROR: Cannot connect to WordPress via WP-CLI after 3 attempts" >&2
+              echo "  Diagnostics:" >&2
+              echo "    Environment status:" >&2
+              terminus env:info "$SITE_NAME.$ENV" 2>&1 | grep -E "(initialized|locked|connection_mode)" | sed 's/^/      /' || echo "      (unable to get status)"
+              echo "    Last WP-CLI error:" >&2
+              terminus wp "$SITE_NAME.$ENV" -- core version 2>&1 | head -5 | sed 's/^/      /'
               echo "  Returning minimal data for $ENV" >&2
               # Return minimal valid JSON but don't fail the script
               cat <<ERROREOF
