@@ -182,17 +182,16 @@ IS_MULTISITE=$(terminus wp "$SITE_NAME.$ENV" -- eval 'echo is_multisite() ? "tru
 if [ "$PLUGINS_JSON" = "[]" ] || [ -z "$PLUGINS_JSON" ]; then
   PLUGINS_OBJ="{}"
 else
-  # Try to transform, capture error
-  JQ_ERROR=$(echo "$PLUGINS_JSON" | jq -c 'map({(.name): {version: .version, status: .status, update: .update, update_version: .update_version}}) | add // {}' 2>&1 >/dev/null)
-  if [ $? -eq 0 ]; then
-    PLUGINS_OBJ=$(echo "$PLUGINS_JSON" | jq -c 'map({(.name): {version: .version, status: .status, update: .update, update_version: .update_version}}) | add // {}' 2>/dev/null)
-  else
-    echo "  ⚠️  jq transformation failed for plugins: $JQ_ERROR" >&2
-    PLUGINS_OBJ="{}"
-  fi
+  # Try to transform
+  set +e  # Temporarily disable exit on error
+  PLUGINS_OBJ=$(echo "$PLUGINS_JSON" | jq -c 'map({(.name): {version: .version, status: .status, update: .update, update_version: .update_version}}) | add // {}' 2>&1)
+  JQ_EXIT=$?
+  set -e  # Re-enable exit on error
 
-  # Final validation
-  if [ -z "$PLUGINS_OBJ" ] || [ "$PLUGINS_OBJ" = "null" ]; then
+  if [ $JQ_EXIT -ne 0 ]; then
+    echo "  ⚠️  jq transformation failed for plugins (exit $JQ_EXIT): ${PLUGINS_OBJ:0:200}" >&2
+    PLUGINS_OBJ="{}"
+  elif [ -z "$PLUGINS_OBJ" ] || [ "$PLUGINS_OBJ" = "null" ]; then
     echo "  ⚠️  Could not process plugins to object format, using empty" >&2
     PLUGINS_OBJ="{}"
   fi
@@ -202,17 +201,16 @@ fi
 if [ "$THEMES_JSON" = "[]" ] || [ -z "$THEMES_JSON" ]; then
   THEMES_OBJ="{}"
 else
-  # Try to transform, capture error
-  JQ_ERROR=$(echo "$THEMES_JSON" | jq -c 'map({(.name): {version: .version, status: .status, update: .update}}) | add // {}' 2>&1 >/dev/null)
-  if [ $? -eq 0 ]; then
-    THEMES_OBJ=$(echo "$THEMES_JSON" | jq -c 'map({(.name): {version: .version, status: .status, update: .update}}) | add // {}' 2>/dev/null)
-  else
-    echo "  ⚠️  jq transformation failed for themes: $JQ_ERROR" >&2
-    THEMES_OBJ="{}"
-  fi
+  # Try to transform
+  set +e  # Temporarily disable exit on error
+  THEMES_OBJ=$(echo "$THEMES_JSON" | jq -c 'map({(.name): {version: .version, status: .status, update: .update}}) | add // {}' 2>&1)
+  JQ_EXIT=$?
+  set -e  # Re-enable exit on error
 
-  # Final validation
-  if [ -z "$THEMES_OBJ" ] || [ "$THEMES_OBJ" = "null" ]; then
+  if [ $JQ_EXIT -ne 0 ]; then
+    echo "  ⚠️  jq transformation failed for themes (exit $JQ_EXIT): ${THEMES_OBJ:0:200}" >&2
+    THEMES_OBJ="{}"
+  elif [ -z "$THEMES_OBJ" ] || [ "$THEMES_OBJ" = "null" ]; then
     echo "  ⚠️  Could not process themes to object format, using empty" >&2
     THEMES_OBJ="{}"
   fi
