@@ -71,21 +71,33 @@ jobs:
             terminus env:wake "$SITE_NAME.$ENV" &> /dev/null || true
             sleep 2
 
-            # Get versions (with error handling)
-            WP_VERSION=$(terminus wp "$SITE_NAME.$ENV" -- core version 2>/dev/null | grep -v "^\[" | grep -v "^Command:" | grep -E "^[0-9]" || echo "unknown")
+            # Get WordPress version
+            WP_VERSION=$(terminus wp "$SITE_NAME.$ENV" -- core version 2>&1 | grep -oE "^[0-9]+\.[0-9]+(\.[0-9]+)?" | head -1 || echo "unknown")
+
+            # Get PHP version
             PHP_VERSION=$(terminus env:info "$SITE_NAME.$ENV" --field=php_version 2>/dev/null || echo "unknown")
 
-            # Get plugins (filter Terminus output noise)
-            PLUGINS_JSON=$(terminus wp "$SITE_NAME.$ENV" -- plugin list --format=json 2>/dev/null | grep -v "^\[" | grep -v "^Command:" | grep -v "^Fatal" | grep "^\[" || echo "[]")
+            # Get plugins (capture JSON, filter non-JSON lines)
+            PLUGINS_RAW=$(terminus wp "$SITE_NAME.$ENV" -- plugin list --format=json 2>&1)
+            PLUGINS_JSON=$(echo "$PLUGINS_RAW" | grep -E '^\[' | head -1 || echo "[]")
 
-            # Get themes (filter Terminus output noise)
-            THEMES_JSON=$(terminus wp "$SITE_NAME.$ENV" -- theme list --format=json 2>/dev/null | grep -v "^\[" | grep -v "^Command:" | grep -v "^Fatal" | grep "^\[" || echo "[]")
+            # Debug: show plugin count
+            PLUGIN_COUNT=$(echo "$PLUGINS_JSON" | jq 'length' 2>/dev/null || echo "0")
+            echo "  Plugins found: $PLUGIN_COUNT" >&2
+
+            # Get themes (capture JSON, filter non-JSON lines)
+            THEMES_RAW=$(terminus wp "$SITE_NAME.$ENV" -- theme list --format=json 2>&1)
+            THEMES_JSON=$(echo "$THEMES_RAW" | grep -E '^\[' | head -1 || echo "[]")
+
+            # Debug: show theme count
+            THEME_COUNT=$(echo "$THEMES_JSON" | jq 'length' 2>/dev/null || echo "0")
+            echo "  Themes found: $THEME_COUNT" >&2
 
             # Get active theme
-            ACTIVE_THEME=$(terminus wp "$SITE_NAME.$ENV" -- theme list --status=active --field=name 2>/dev/null | grep -v "^\[" | grep -v "^Command:" | grep -v "^Fatal" | head -1 || echo "unknown")
+            ACTIVE_THEME=$(terminus wp "$SITE_NAME.$ENV" -- theme list --status=active --field=name 2>&1 | grep -v "^\[" | grep -v "^Command:" | head -1 || echo "unknown")
 
             # Get multisite status
-            IS_MULTISITE=$(terminus wp "$SITE_NAME.$ENV" -- eval 'echo is_multisite() ? "true" : "false";' 2>/dev/null | grep -v "^\[" | grep -v "^Command:" | grep -E "^(true|false)" || echo "false")
+            IS_MULTISITE=$(terminus wp "$SITE_NAME.$ENV" -- eval 'echo is_multisite() ? "true" : "false";' 2>&1 | grep -E "^(true|false)" || echo "false")
 
             # Build JSON
             cat <<ENVEOF

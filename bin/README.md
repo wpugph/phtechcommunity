@@ -1,51 +1,80 @@
 # Deployment Scripts
 
-Quick reference for managing Pantheon environments.
+Quick reference for managing Pantheon environments and manifests.
 
 ## 🚀 Quick Commands
 
 ```bash
-# First-time setup
-./bin/setup.sh
+# Save local WordPress state to manifest
+./bin/save-local-to-manifest.sh
 
-# Sync environment state from Pantheon → manifest.json
-./bin/sync-manifest.sh <site-name>
+# Save Pantheon environments to manifests
+./bin/save-pantheon-to-manifest.sh
 
-# Replicate environment locally from manifest.json
-./bin/bootstrap-env.sh dev|test|live|multidev-name
+# Install from manifest to local
+./bin/local-install-from-manifest.sh --source-env=dev
 ```
 
 ## 📋 Scripts
 
-### `setup.sh`
-**Purpose:** First-time setup for new developers  
+### `save-local-to-manifest.sh`
+**Purpose:** Capture local WordPress state to manifest file  
+**Output:** `bin/manifest.local.json`
+
 **What it does:**
-- Checks all dependencies (Terminus, WP-CLI, jq, git)
-- Authenticates with Terminus
-- Syncs initial manifest from Pantheon
-- Configures Pantheon git remote
-- Creates necessary .gitkeep files
+- Reads local WordPress installation via WP-CLI
+- Captures:
+  - WordPress core version
+  - PHP version
+  - All plugins (with versions and activation status)
+  - All themes (with versions)
+  - MU plugins
+  - Active theme
+  - Multisite configuration
+- Excludes items from `bin/manifest-exclude.txt`
+- Saves to `bin/manifest.local.json`
 
 **When to use:**
-- Setting up the project for the first time
-- Onboarding new team members
+- Before syncing local changes to Pantheon
+- After installing/updating plugins locally
+- To create a snapshot of your local environment
+- When preparing to sync from local to dev
+
+**Example:**
+```bash
+# Save current local state
+./bin/save-local-to-manifest.sh
+
+# Commit the manifest
+git add bin/manifest.local.json
+git commit -m "Update local manifest: added Jetpack 10.5"
+```
+
+**Options:**
+```bash
+# Save to a different environment name (default: local)
+./bin/save-local-to-manifest.sh --env=dev
+```
 
 ---
 
-### `sync-manifest.sh`
+### `save-pantheon-to-manifest.sh`
 **Purpose:** Pull environment state from Pantheon  
+**Output:** `bin/manifest.dev.json`, `bin/manifest.test.json`, `bin/manifest.live.json`
+
 **What it does:**
 - Connects to Pantheon via Terminus
-- Queries all environments (dev, test, live, multidevs)
-- Extracts versions for:
-  - WordPress core
-  - PHP
+- Queries all standard environments (dev, test, live)
+- For each environment, extracts:
+  - WordPress core version
+  - PHP version
   - All plugins (with status and available updates)
   - All themes
   - MU plugins
   - Active theme
   - Multisite configuration
-- Saves everything to `bin/manifest.json`
+- Excludes items from `bin/manifest-exclude.txt`
+- Saves each environment to separate file: `bin/manifest.{env}.json`
 
 **When to use:**
 - Before major deployments (to capture current state)
@@ -55,29 +84,43 @@ Quick reference for managing Pantheon environments.
 
 **Example:**
 ```bash
-# Sync all environments
-./bin/sync-manifest.sh phtech1
+# Sync all environments (interactive)
+./bin/save-pantheon-to-manifest.sh
 
-# Commit the updated manifest
-git add manifest.json
-git commit -m "Update manifest: added Jetpack 10.5"
+# With site name and auto-confirm
+./bin/save-pantheon-to-manifest.sh eventsph --yes
+
+# Commit the updated manifests
+git add bin/manifest.*.json
+git commit -m "Update Pantheon manifests: WordPress 6.9.4"
 ```
+
+**Output files:**
+- `bin/manifest.dev.json` - Dev environment
+- `bin/manifest.test.json` - Test environment
+- `bin/manifest.live.json` - Live environment
 
 ---
 
-### `bootstrap-env.sh`
-**Purpose:** Replicate a Pantheon environment locally  
+### `local-install-from-manifest.sh`
+**Purpose:** Install WordPress plugins/themes from manifest  
+**Input:** `bin/manifest.{env}.json`
+
 **What it does:**
-- Reads `bin/manifest.json`
-- Installs/updates WordPress core to match version
-- Installs/updates all plugins with exact versions
-- Installs/updates all themes (except custom theme)
-- Activates correct theme
-- Sets plugin activation states
+- Reads manifest file for specified environment
+- Compares with current local installation
+- Only installs/updates what's different (smart sync)
+- Handles:
+  - Installing missing plugins/themes
+  - Updating/downgrading mismatched versions
+  - Activating/deactivating plugins
+  - Removing plugins not in manifest
+  - Activating correct theme
 
 **What it DOESN'T do:**
 - Sync database (use `terminus backup:get` for that)
 - Sync uploads (use `terminus rsync` for that)
+- Update WordPress core (manual step)
 
 **When to use:**
 - Setting up local development environment
@@ -87,14 +130,65 @@ git commit -m "Update manifest: added Jetpack 10.5"
 
 **Example:**
 ```bash
-# Replicate dev environment
-./bin/bootstrap-env.sh dev
+# Install from dev environment manifest (default)
+./bin/local-install-from-manifest.sh
 
-# Replicate test environment
-./bin/bootstrap-env.sh test
+# Install from test environment
+./bin/local-install-from-manifest.sh --source-env=test
 
-# Replicate a multidev environment
-./bin/bootstrap-env.sh feature-authentication
+# Force reinstall everything
+./bin/local-install-from-manifest.sh --force
+
+# Auto-confirm (no prompts)
+./bin/local-install-from-manifest.sh --source-env=live --yes
+```
+
+**Options:**
+- `--source-env=ENV` - Environment to sync from (dev, test, live, local)
+- `--force` - Force reinstall even if versions match
+- `--yes` - Skip confirmation prompt
+
+---
+
+## 📁 Manifest Files Structure
+
+**New per-environment structure:**
+```
+bin/
+├── manifest.local.json  ← Your local WordPress state
+├── manifest.dev.json    ← Pantheon dev environment
+├── manifest.test.json   ← Pantheon test environment
+└── manifest.live.json   ← Pantheon live environment
+```
+
+**Benefits:**
+- ✅ Easier git tracking (one file per environment)
+- ✅ Fewer merge conflicts
+- ✅ Clearer separation of concerns
+- ✅ Simpler to diff between environments
+
+**Each manifest contains:**
+```json
+{
+  "site_name": "eventsph",
+  "site_id": "4bf58ee6-...",
+  "environment": "dev",
+  "wordpress": {
+    "version": "6.9.4",
+    "db_version": "60717"
+  },
+  "php_version": "8.2",
+  "plugins": {
+    "jetpack": {
+      "version": "13.9",
+      "status": "active",
+      "update": "none"
+    }
+  },
+  "themes": { ... },
+  "active_theme": "astra",
+  "last_updated": "2026-04-21T12:00:00Z"
+}
 ```
 
 ---
@@ -105,45 +199,81 @@ git commit -m "Update manifest: added Jetpack 10.5"
 ```bash
 git clone <repo-url>
 cd <repo>
-./bin/setup.sh
-./bin/bootstrap-env.sh dev
+
+# Install from dev environment manifest
+./bin/local-install-from-manifest.sh --source-env=dev --yes
 ```
 
-### Adding a Plugin
+### Adding a Plugin Locally
 ```bash
-# Option 1: Via Pantheon Dashboard
-# 1. Install plugin in Pantheon dev
-# 2. Run sync
-./bin/sync-manifest.sh phtech1
-git add bin/manifest.json
-git commit -m "Add: WooCommerce 7.5.0"
-
-# Option 2: Via Local WP-CLI
+# Install plugin via WP-CLI
 wp plugin install woocommerce --version=7.5.0 --activate
-./bin/sync-manifest.sh phtech1  # Verify it matches
-git add bin/manifest.json
+
+# Save to local manifest
+./bin/save-local-to-manifest.sh
+
+# Commit
+git add bin/manifest.local.json
 git commit -m "Add: WooCommerce 7.5.0"
+
+# Then use GitHub Actions to sync to Pantheon dev
 ```
 
-### Updating Dependencies
+### Syncing Local to Pantheon Dev
 ```bash
-# Update in Pantheon dev environment via dashboard
-./bin/sync-manifest.sh phtech1
-./bin/bootstrap-env.sh dev  # Test locally
-git add bin/manifest.json
-git commit -m "Update: Jetpack 10.4 → 10.5"
+# 1. Save local state
+./bin/save-local-to-manifest.sh
+
+# 2. Commit and push
+git add bin/manifest.local.json
+git commit -m "Update local manifest"
+git push
+
+# 3. Run GitHub Actions workflow:
+#    "Sync Pantheon from Manifest"
+#    - source_env: local
+#    - commit_changes: true
+```
+
+### Syncing Pantheon to Local
+```bash
+# Option 1: Via script
+./bin/save-pantheon-to-manifest.sh eventsph --yes
+./bin/local-install-from-manifest.sh --source-env=dev --yes
+
+# Option 2: Via GitHub Actions
+# Run "Sync Manifest from Pantheon" workflow
+# Then: git pull
+./bin/local-install-from-manifest.sh --source-env=dev --yes
 ```
 
 ### Replicating Production Locally
 ```bash
-./bin/sync-manifest.sh phtech1
-./bin/bootstrap-env.sh live
+# Get live manifest
+./bin/save-pantheon-to-manifest.sh eventsph --yes
+
+# Install from live
+./bin/local-install-from-manifest.sh --source-env=live
 
 # Optional: Get production database
-terminus backup:create phtech1.live --element=db
-terminus backup:get phtech1.live --element=db
+terminus backup:create eventsph.live --element=db
+terminus backup:get eventsph.live --element=db
 wp db import <backup-file>.sql
 ```
+
+### Excluding Plugins/Themes
+```bash
+# Edit exclusion file
+echo "wordfence" >> bin/manifest-exclude.txt
+echo "jetpack-backup" >> bin/manifest-exclude.txt
+
+# Excluded items won't be:
+# - Captured in manifests
+# - Installed/updated during sync
+# - Removed during cleanup
+```
+
+---
 
 ## 🛠️ Troubleshooting
 
@@ -167,17 +297,55 @@ brew install jq
 chmod +x bin/*.sh
 ```
 
+### "Manifest file not found"
+```bash
+# For local manifest
+./bin/save-local-to-manifest.sh
+
+# For Pantheon manifests
+./bin/save-pantheon-to-manifest.sh
+```
+
 ### Plugin fails to install
 - Check if plugin is available on WordPress.org
 - Premium plugins must be installed manually or via custom source
 - Some plugins may have dependencies that need to be installed first
 
-### Environment not in manifest
-```bash
-# Re-sync to include all environments
-./bin/sync-manifest.sh phtech1
+### "Environment not found in manifest"
+Old error - no longer applicable!  
+Each environment now has its own manifest file.
+
+---
+
+## 🆕 What Changed (April 2026)
+
+**Breaking Change:** Manifest structure changed from single file to per-environment files
+
+**Before:**
 ```
+bin/manifest.json
+└── .environments
+    ├── .dev
+    ├── .test
+    ├── .live
+    └── .local
+```
+
+**After:**
+```
+bin/
+├── manifest.dev.json
+├── manifest.test.json
+├── manifest.live.json
+└── manifest.local.json
+```
+
+**Migration:** Re-run `save-pantheon-to-manifest.sh` and `save-local-to-manifest.sh` to create new files.
+
+---
 
 ## 📚 Additional Info
 
-See [DEPLOYMENT.md](../DEPLOYMENT.md) for complete documentation.
+- **Workflows:** See [DOCS/WORKFLOWS.md](../DOCS/WORKFLOWS.md) for GitHub Actions
+- **Deployment:** See [DOCS/DEPLOYMENT.md](../DOCS/DEPLOYMENT.md) for complete deployment guide
+- **Changelog:** See [DOCS/CHANGELOG.md](../DOCS/CHANGELOG.md) for recent changes
