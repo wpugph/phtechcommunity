@@ -46,9 +46,8 @@ function pantheon_setup_waf_directories() {
         if (!file_exists($target_path)) {
             wp_mkdir_p($target_path);
 
-            // Protect directory with .htaccess
-            $htaccess_content = "# Deny all direct access\n<Files *>\n\tOrder allow,deny\n\tDeny from all\n</Files>\n";
-            file_put_contents($target_path . '/.htaccess', $htaccess_content);
+            // Note: Pantheon uses nginx (not Apache), so .htaccess won't work.
+            // The /private/ directory is automatically protected by Pantheon's nginx config.
         }
 
         // If source exists and is a real directory (not a symlink), move it

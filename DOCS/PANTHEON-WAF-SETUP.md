@@ -44,9 +44,10 @@ The MU plugin (`pantheon-waf-setup.php`) runs on every request and:
 
 1. **Detects Pantheon environment** (via `$_ENV['PANTHEON_ENVIRONMENT']`)
 2. **Creates target directories** in `uploads/private/`
-3. **Protects directories** with `.htaccess` (denies direct access)
-4. **Migrates existing files** (if directories already exist)
-5. **Creates symlinks** from `wp-content/wflogs/` → `uploads/private/...`
+3. **Migrates existing files** (if directories already exist)
+4. **Creates symlinks** from `wp-content/wflogs/` → `uploads/private/...`
+
+**Note:** Pantheon uses nginx (not Apache), so `.htaccess` files are not used. The `uploads/private/` directory is automatically protected by Pantheon's nginx configuration.
 
 ### 2. Directory Structure
 
@@ -54,14 +55,12 @@ The MU plugin (`pantheon-waf-setup.php`) runs on every request and:
 ```
 wp-content/
 ├── uploads/
-│   └── private/
+│   └── private/                    ← Protected by Pantheon's nginx config
 │       ├── wordfence-waf-logs/    ← Actual files here (writable)
-│       │   ├── .htaccess
 │       │   ├── config.php
 │       │   ├── rules.php
 │       │   └── ...
 │       └── jetpack-waf/            ← Actual files here (writable)
-│           ├── .htaccess
 │           └── rules/
 ├── wflogs/                         ← Symlink →  ../uploads/private/wordfence-waf-logs/
 └── jetpack-waf/                    ← Symlink →  ../uploads/private/jetpack-waf/
@@ -102,15 +101,12 @@ When you first deploy to Pantheon:
 
 ### Protected Directories
 
-Both WAF directories in `uploads/private/` are protected with `.htaccess`:
+Both WAF directories are stored in `uploads/private/`, which is automatically protected by **Pantheon's nginx configuration**.
 
-```apache
-# Deny all direct access
-<Files *>
-	Order allow,deny
-	Deny from all
-</Files>
-```
+**How Pantheon Protects `/private/`:**
+- Pantheon uses **nginx** (not Apache), so `.htaccess` files don't work
+- Nginx is configured to **deny direct HTTP access** to any `/private/` directory
+- Files are still readable by PHP/WordPress but not accessible via browser
 
 This prevents:
 - Direct browser access to config files
@@ -122,7 +118,8 @@ This prevents:
 Files are stored in `uploads/private/` specifically (not just `uploads/`):
 - More secure than public uploads
 - Not indexed by search engines
-- Protected by `.htaccess` rules
+- Protected by Pantheon's nginx configuration
+- Still writable by WordPress (bypasses read-only filesystem)
 
 ---
 
@@ -199,7 +196,10 @@ ls -la web/wp-content/wflogs/
 # SSH to Pantheon
 terminus ssh eventsph.dev
 
-# Remove broken symlink
+# Check if symlink exists
+ls -la web/wp-content/wflogs
+
+# Remove broken symlink (if needed)
 rm -f web/wp-content/wflogs
 
 # The MU plugin will recreate it on next request
@@ -209,17 +209,18 @@ ln -s ../uploads/private/wordfence-waf-logs web/wp-content/wflogs
 
 ### Issue: "Permission denied" errors
 
-**Cause:** Target directory doesn't exist or isn't writable
+**Cause:** Target directory doesn't exist in uploads/private/
 
 **Solution:**
 ```bash
-# Create target directory
+# SSH to Pantheon
+terminus ssh eventsph.dev
+
+# Create target directories (Pantheon automatically makes them writable)
 mkdir -p web/wp-content/uploads/private/wordfence-waf-logs
 mkdir -p web/wp-content/uploads/private/jetpack-waf
 
-# Set permissions (Pantheon handles this automatically, but just in case)
-chmod 755 web/wp-content/uploads/private/wordfence-waf-logs
-chmod 755 web/wp-content/uploads/private/jetpack-waf
+# Permissions are handled automatically by Pantheon for uploads/ directory
 ```
 
 ### Issue: MU plugin not running
@@ -321,7 +322,12 @@ terminus rsync ~/local-waf-backup/ eventsph.dev:files/private/wordfence-waf-logs
    define('PANTHEON_WAF_SETUP_FORCE', true);
    ```
 
-4. **Pantheon Caching:**
+4. **Private Directory Protection:**
+   - Pantheon uses nginx, not Apache (`.htaccess` doesn't work)
+   - `/uploads/private/` is protected by Pantheon's nginx config
+   - Test by trying to access: `https://your-site.pantheonsite.io/wp-content/uploads/private/wordfence-waf-logs/config.php` (should get 403 Forbidden)
+
+5. **Pantheon Caching:**
    - WAF rules are cached by Pantheon's edge
    - Changes may take 5-10 minutes to propagate
    - Clear cache: `terminus env:clear-cache eventsph.dev`
@@ -345,7 +351,7 @@ terminus rsync ~/local-waf-backup/ eventsph.dev:files/private/wordfence-waf-logs
 - [ ] Wordfence dashboard shows no errors
 - [ ] Jetpack WAF shows as active
 - [ ] WAF logs are writing to `uploads/private/`
-- [ ] `.htaccess` protection in place
+- [ ] Private directory protection verified (403 Forbidden on direct access)
 - [ ] Test/Live environments setup (after deployment)
 
 ---
