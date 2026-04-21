@@ -255,13 +255,6 @@ jobs:
             echo ""
           fi
 
-          # Compare and build action lists
-          > /tmp/plugins_to_install.txt
-          > /tmp/plugins_to_update.txt
-          > /tmp/plugins_to_activate.txt
-          > /tmp/plugins_to_deactivate.txt
-          > /tmp/plugins_to_uninstall.txt
-
           # Sanity check before comparison
           if [ ! -f /tmp/manifest_plugins.txt ] || [ ! -s /tmp/manifest_plugins.txt ]; then
             echo "❌ ERROR: Manifest plugins list is empty for environment '$SOURCE_ENV'!"
@@ -283,11 +276,21 @@ jobs:
             echo "⚠️  WARNING: Current plugins list is empty - will treat all as new installs"
           fi
 
-          echo "Comparing plugins..."
+          # Initialize comparison result files
+          > /tmp/plugins_to_install.txt
+          > /tmp/plugins_to_update.txt
+          > /tmp/plugins_to_activate.txt
+          > /tmp/plugins_to_deactivate.txt
+          > /tmp/plugins_to_uninstall.txt
+          > /tmp/plugins_unchanged.txt
+
+          echo "📊 Comparing plugins between manifest and dev..."
+          echo ""
+
+          # Compare manifest plugins with current state
           while IFS='|' read -r slug version status; do
             # Skip excluded plugins
             if echo "$EXCLUDED" | grep -qE "(^|\\|)${slug}(\\||$)"; then
-              echo "  Skipping excluded: $slug"
               continue
             fi
 
@@ -295,45 +298,40 @@ jobs:
 
             if [ -z "$current_line" ]; then
               # Plugin not installed
-              echo "  → Install: $slug $version (not found in dev)"
               echo "${slug}|${version}|${status}" >> /tmp/plugins_to_install.txt
             else
               current_version=$(echo "$current_line" | cut -d'|' -f2)
               current_status=$(echo "$current_line" | cut -d'|' -f3)
 
-              if [ "$FORCE" = "true" ] || [ "$current_version" != "$version" ]; then
-                # Version mismatch - could be upgrade or downgrade
-                echo "  → Version change: $slug $current_version → $version"
+              # Check if version AND status match
+              if [ "$current_version" = "$version" ] && [ "$current_status" = "$status" ] && [ "$FORCE" != "true" ]; then
+                # Perfect match - no action needed
+                echo "${slug}|${version}|${status}" >> /tmp/plugins_unchanged.txt
+              elif [ "$FORCE" = "true" ] || [ "$current_version" != "$version" ]; then
+                # Version mismatch - needs update/downgrade
                 echo "${slug}|${version}|${current_version}|${status}" >> /tmp/plugins_to_update.txt
               elif [ "$status" = "active" ] && [ "$current_status" != "active" ]; then
-                echo "  → Activate: $slug"
+                # Only activation status differs
                 echo "$slug" >> /tmp/plugins_to_activate.txt
               elif [ "$status" = "inactive" ] && [ "$current_status" = "active" ]; then
-                echo "  → Deactivate: $slug"
+                # Only activation status differs
                 echo "$slug" >> /tmp/plugins_to_deactivate.txt
-              else
-                echo "  ✓ OK: $slug $version (matches)"
               fi
             fi
           done < /tmp/manifest_plugins.txt
 
           # Check for plugins in dev that are NOT in manifest (need to uninstall)
-          echo ""
-          echo "Checking for extra plugins to uninstall..."
           while IFS='|' read -r slug version status; do
             # Skip excluded plugins
             if echo "$EXCLUDED" | grep -qE "(^|\\|)${slug}(\\||$)"; then
-              echo "  Skipping excluded: $slug"
               continue
             fi
 
             # Check if plugin exists in manifest
             if ! grep -q "^${slug}|" /tmp/manifest_plugins.txt; then
-              echo "  → Uninstall: $slug $version (not in manifest)"
               echo "${slug}|${version}" >> /tmp/plugins_to_uninstall.txt
             fi
           done < /tmp/current_plugins.txt
-          echo ""
 
           # Get themes from manifest and current state
           MANIFEST_FILE="${{ steps.load_manifest.outputs.manifest_file }}"
@@ -380,26 +378,46 @@ jobs:
             fi
           done < /tmp/manifest_themes.txt
 
-          # Count actions
+          # Count all actions
           INSTALL_COUNT=$(wc -l < /tmp/plugins_to_install.txt | xargs)
           UPDATE_COUNT=$(wc -l < /tmp/plugins_to_update.txt | xargs)
           ACTIVATE_COUNT=$(wc -l < /tmp/plugins_to_activate.txt | xargs)
           DEACTIVATE_COUNT=$(wc -l < /tmp/plugins_to_deactivate.txt | xargs)
           UNINSTALL_COUNT=$(wc -l < /tmp/plugins_to_uninstall.txt | xargs)
+          UNCHANGED_COUNT=$(wc -l < /tmp/plugins_unchanged.txt | xargs)
           THEME_INSTALL_COUNT=$(wc -l < /tmp/themes_to_install.txt | xargs)
           THEME_UPDATE_COUNT=$(wc -l < /tmp/themes_to_update.txt | xargs)
 
-          # Debug: Show what's in the update file
+          # Summary of comparison
           echo ""
-          echo "=== DEBUG: Plugins to Update ==="
-          if [ "$UPDATE_COUNT" -gt 0 ]; then
-            echo "Update file contents:"
+          echo "╔═══════════════════════════════════════════╗"
+          echo "║  Plugin Comparison Summary                ║"
+          echo "╚═══════════════════════════════════════════╝"
+          echo ""
+          echo "✓ Unchanged (already match):     $UNCHANGED_COUNT"
+          echo "↓ Install (not present):         $INSTALL_COUNT"
+          echo "↑ Update/Downgrade (version):    $UPDATE_COUNT"
+          echo "⚡ Activate (inactive):           $ACTIVATE_COUNT"
+          echo "⚠ Deactivate (active):           $DEACTIVATE_COUNT"
+          echo "✗ Uninstall (not in manifest):   $UNINSTALL_COUNT"
+          echo ""
+
+          # Show details only if there are changes
+          if [ "$UPDATE_COUNT" -gt 0 ] && [ "${{ github.event.inputs.debug_mode }}" = "true" ]; then
+            echo "=== Plugins to Update ==="
             cat /tmp/plugins_to_update.txt
-          else
-            echo "No plugins to update"
+            echo ""
           fi
-          echo "================================"
-          echo ""
+          if [ "$INSTALL_COUNT" -gt 0 ] && [ "${{ github.event.inputs.debug_mode }}" = "true" ]; then
+            echo "=== Plugins to Install ==="
+            cat /tmp/plugins_to_install.txt
+            echo ""
+          fi
+          if [ "$UNINSTALL_COUNT" -gt 0 ]; then
+            echo "⚠️  Plugins to be REMOVED:"
+            cat /tmp/plugins_to_uninstall.txt
+            echo ""
+          fi
 
           echo "plugins_install_count=$INSTALL_COUNT" >> $GITHUB_OUTPUT
           echo "plugins_update_count=$UPDATE_COUNT" >> $GITHUB_OUTPUT
@@ -415,6 +433,43 @@ jobs:
           TOTAL_ACTIONS=$((TOTAL_ACTIONS + INSTALL_COUNT + UPDATE_COUNT + ACTIVATE_COUNT + DEACTIVATE_COUNT + UNINSTALL_COUNT + THEME_INSTALL_COUNT + THEME_UPDATE_COUNT))
 
           echo "total_actions=$TOTAL_ACTIONS" >> $GITHUB_OUTPUT
+          echo "unchanged_count=$UNCHANGED_COUNT" >> $GITHUB_OUTPUT
+
+          # Check if anything needs to be done
+          if [ "$TOTAL_ACTIONS" -eq 0 ]; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo ""
+            echo "╔═══════════════════════════════════════════╗"
+            echo "║  ✅ Everything is already in sync!        ║"
+            echo "╚═══════════════════════════════════════════╝"
+            echo ""
+            echo "No changes needed. Dev environment matches the manifest perfectly."
+            echo ""
+            echo "📊 Summary:"
+            echo "  - Plugins in sync: $UNCHANGED_COUNT"
+            echo "  - WordPress: $WP_CURRENT ✓"
+            echo "  - Active theme: $THEME_CURRENT ✓"
+            echo ""
+
+            # Write success summary to GitHub
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "---" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "## ✅ Already in Sync!" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "No changes needed. The dev environment perfectly matches the **$SOURCE_ENV** manifest." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Status:**" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ Plugins in sync: $UNCHANGED_COUNT" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ WordPress version: $WP_CURRENT" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ Active theme: $THEME_CURRENT" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo ""
+            echo "📋 Proceeding with $TOTAL_ACTIONS actions..."
+            echo ""
+          fi
 
           # Write summary
           echo "**Source:** $SOURCE_ENV environment from manifest" >> $GITHUB_STEP_SUMMARY
@@ -430,11 +485,14 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
 
           echo "### Plugins" >> $GITHUB_STEP_SUMMARY
-          echo "- Install: $INSTALL_COUNT" >> $GITHUB_STEP_SUMMARY
-          echo "- Update/Downgrade (version mismatch): $UPDATE_COUNT" >> $GITHUB_STEP_SUMMARY
-          echo "- Activate: $ACTIVATE_COUNT" >> $GITHUB_STEP_SUMMARY
-          echo "- Deactivate: $DEACTIVATE_COUNT" >> $GITHUB_STEP_SUMMARY
-          echo "- Uninstall (not in manifest): $UNINSTALL_COUNT" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ **Unchanged** (already match): **$UNCHANGED_COUNT**" >> $GITHUB_STEP_SUMMARY
+          echo "- 📦 Install: $INSTALL_COUNT" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔄 Update/Downgrade: $UPDATE_COUNT" >> $GITHUB_STEP_SUMMARY
+          echo "- ⚡ Activate: $ACTIVATE_COUNT" >> $GITHUB_STEP_SUMMARY
+          echo "- ⏸️ Deactivate: $DEACTIVATE_COUNT" >> $GITHUB_STEP_SUMMARY
+          echo "- 🗑️ Uninstall (not in manifest): $UNINSTALL_COUNT" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Total changes needed:** $((INSTALL_COUNT + UPDATE_COUNT + ACTIVATE_COUNT + DEACTIVATE_COUNT + UNINSTALL_COUNT))" >> $GITHUB_STEP_SUMMARY
 
           # Show detailed version mismatches for plugins
           if [ "$UPDATE_COUNT" -gt 0 ]; then
@@ -501,7 +559,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
 
       - name: Update WordPress Core
-        if: steps.compare.outputs.wp_action == 'update'
+        if: steps.compare.outputs.has_changes == 'true' && steps.compare.outputs.wp_action == 'update'
         env:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
           WP_TARGET: ${{ steps.compare.outputs.wp_target }}
@@ -519,7 +577,7 @@ jobs:
           fi
 
       - name: Install new plugins
-        if: fromJSON(steps.compare.outputs.plugins_install_count) > 0
+        if: steps.compare.outputs.has_changes == 'true' && fromJSON(steps.compare.outputs.plugins_install_count) > 0
         env:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
         run: |
@@ -544,7 +602,7 @@ jobs:
           echo "Total: $(wc -l < /tmp/plugins_installed.txt | xargs)/$TOTAL installed successfully"
 
       - name: Update existing plugins
-        if: fromJSON(steps.compare.outputs.plugins_update_count) > 0
+        if: steps.compare.outputs.has_changes == 'true' && fromJSON(steps.compare.outputs.plugins_update_count) > 0
         env:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
           DEBUG_MODE: ${{ github.event.inputs.debug_mode }}
