@@ -157,26 +157,41 @@ get_env_data() {
     # Wake the environment
     terminus env:wake "$SITE_NAME.$ENV" &> /dev/null || true
 
-    # Get WordPress version (filter out Terminus noise)
-    WP_VERSION=$(terminus wp "$SITE_NAME.$ENV" -- core version 2>/dev/null | grep -v "^\[" | grep -v "^Command:" | grep -E "^[0-9]" || echo "unknown")
+    # Get WordPress version
+    WP_VERSION=$(terminus wp "$SITE_NAME.$ENV" -- core version 2>&1 | grep -oE "^[0-9]+\.[0-9]+(\.[0-9]+)?" | head -1 || echo "unknown")
 
     # Get DB version
-    DB_VERSION=$(terminus wp "$SITE_NAME.$ENV" -- core version --extra 2>/dev/null | grep -v "^\[" | grep -v "^Command:" | grep 'Database' | awk '{print $3}' || echo "unknown")
+    DB_VERSION=$(terminus wp "$SITE_NAME.$ENV" -- core version --extra 2>&1 | grep 'Database' | awk '{print $3}' | head -1 || echo "unknown")
 
     # Get PHP version
     PHP_VERSION=$(terminus env:info "$SITE_NAME.$ENV" --field=php_version 2>/dev/null || echo "unknown")
 
-    # Get plugins list with status and version (filter Terminus output noise)
-    PLUGINS_JSON=$(terminus wp "$SITE_NAME.$ENV" -- plugin list --format=json 2>/dev/null | grep -v "^\[" | grep -v "^Command:" | grep -v "^Fatal" | grep "^\[" || echo "[]")
+    # Get plugins list - capture full output then parse
+    PLUGINS_RAW=$(terminus wp "$SITE_NAME.$ENV" -- plugin list --format=json 2>&1)
+    if echo "$PLUGINS_RAW" | jq -e '. | type' >/dev/null 2>&1; then
+        PLUGINS_JSON=$(echo "$PLUGINS_RAW" | jq -c '.')
+    else
+        PLUGINS_JSON="[]"
+    fi
 
-    # Get themes list with status and version (filter Terminus output noise)
-    THEMES_JSON=$(terminus wp "$SITE_NAME.$ENV" -- theme list --format=json 2>/dev/null | grep -v "^\[" | grep -v "^Command:" | grep -v "^Fatal" | grep "^\[" || echo "[]")
+    # Get themes list - capture full output then parse
+    THEMES_RAW=$(terminus wp "$SITE_NAME.$ENV" -- theme list --format=json 2>&1)
+    if echo "$THEMES_RAW" | jq -e '. | type' >/dev/null 2>&1; then
+        THEMES_JSON=$(echo "$THEMES_RAW" | jq -c '.')
+    else
+        THEMES_JSON="[]"
+    fi
 
-    # Get active theme (filter Terminus noise)
-    ACTIVE_THEME=$(terminus wp "$SITE_NAME.$ENV" -- theme list --status=active --field=name 2>/dev/null | grep -v "^\[" | grep -v "^Command:" | grep -v "^Fatal" | head -1 || echo "unknown")
+    # Get active theme
+    ACTIVE_THEME=$(terminus wp "$SITE_NAME.$ENV" -- theme list --status=active --field=name 2>&1 | grep -v "^\[" | grep -v "^Command:" | head -1 || echo "unknown")
 
-    # Get MU plugins (filter Terminus noise)
-    MU_PLUGINS_JSON=$(terminus wp "$SITE_NAME.$ENV" -- eval 'echo json_encode(get_mu_plugins());' 2>/dev/null | grep -v "^\[" | grep -v "^Command:" | grep -v "^Fatal" | grep "^{" || echo "{}")
+    # Get MU plugins - capture full output then parse
+    MU_PLUGINS_RAW=$(terminus wp "$SITE_NAME.$ENV" -- eval 'echo json_encode(get_mu_plugins());' 2>&1)
+    if echo "$MU_PLUGINS_RAW" | jq -e '. | type' >/dev/null 2>&1; then
+        MU_PLUGINS_JSON=$(echo "$MU_PLUGINS_RAW" | jq -c '.')
+    else
+        MU_PLUGINS_JSON="{}"
+    fi
 
     # Check if multisite (filter Terminus noise)
     IS_MULTISITE=$(terminus wp "$SITE_NAME.$ENV" -- eval 'echo is_multisite() ? "true" : "false";' 2>/dev/null | grep -v "^\[" | grep -v "^Command:" | grep -v "^Fatal" | grep -E "^(true|false)" || echo "false")
@@ -224,24 +239,42 @@ get_env_data() {
 # Create temp file for building new manifest
 TMP_MANIFEST=$(mktemp)
 
-# Initialize manifest
-jq -n \
-    --arg site_name "$SITE_NAME" \
-    --arg site_id "$SITE_UUID" \
-    --arg last_sync "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
-    '{
-        pantheon: {
-            site_name: $site_name,
-            site_id: $site_id,
-            last_sync: $last_sync
-        },
-        environments: {
-            dev: {},
-            test: {},
-            live: {},
-            multidevs: {}
-        }
-    }' > "$TMP_MANIFEST"
+# Preserve existing manifest structure and non-Pantheon environments (like 'local')
+if [ -f "$MANIFEST_FILE" ]; then
+    echo -e "${BLUE}Preserving existing manifest structure and non-Pantheon environments...${NC}" >&2
+    # Copy existing manifest as base, updating only Pantheon metadata
+    jq --arg site_name "$SITE_NAME" \
+        --arg site_id "$SITE_UUID" \
+        --arg last_sync "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+        '.pantheon.site_name = $site_name |
+         .pantheon.site_id = $site_id |
+         .pantheon.last_sync = $last_sync |
+         .environments.dev = {} |
+         .environments.test = {} |
+         .environments.live = {} |
+         .environments.multidevs = {}' \
+        "$MANIFEST_FILE" > "$TMP_MANIFEST"
+else
+    # Create new manifest if none exists
+    echo -e "${BLUE}Creating new manifest...${NC}" >&2
+    jq -n \
+        --arg site_name "$SITE_NAME" \
+        --arg site_id "$SITE_UUID" \
+        --arg last_sync "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+        '{
+            pantheon: {
+                site_name: $site_name,
+                site_id: $site_id,
+                last_sync: $last_sync
+            },
+            environments: {
+                dev: {},
+                test: {},
+                live: {},
+                multidevs: {}
+            }
+        }' > "$TMP_MANIFEST"
+fi
 
 # Sync standard environments
 for ENV in dev test live; do
