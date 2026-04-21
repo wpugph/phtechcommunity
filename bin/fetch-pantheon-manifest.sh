@@ -30,10 +30,14 @@ sleep 5
 
 # Check connection mode and switch to SFTP if needed
 echo "  Checking connection mode..." >&2
-CONN_MODE_OUTPUT=$(terminus connection:info "$SITE_NAME.$ENV" --field=mode 2>&1)
-CONN_MODE=$(echo "$CONN_MODE_OUTPUT" | head -1 | tr -d '[:space:]')
+# Don't fail script if connection:info fails - it might not support --field=mode
+CONN_MODE_OUTPUT=$(terminus connection:info "$SITE_NAME.$ENV" --field=mode 2>&1 || true)
+CONN_MODE=$(echo "$CONN_MODE_OUTPUT" | head -1 | tr -d '[:space:]' || echo "unknown")
 
-if [ -z "$CONN_MODE" ] || [ "$CONN_MODE" = "" ]; then
+# Remove error prefix if present
+CONN_MODE=$(echo "$CONN_MODE" | sed 's/\[error\]//g' | tr -d '[:space:]')
+
+if [ -z "$CONN_MODE" ] || [ "$CONN_MODE" = "" ] || echo "$CONN_MODE" | grep -qi "error"; then
   echo "  Warning: Could not determine connection mode" >&2
   echo "  Terminus output: $CONN_MODE_OUTPUT" >&2
   CONN_MODE="unknown"
@@ -43,11 +47,11 @@ echo "  Current mode: $CONN_MODE" >&2
 
 if [ "$CONN_MODE" = "git" ]; then
   echo "  Switching to SFTP mode (required for WP-CLI)..." >&2
-  terminus connection:set "$SITE_NAME.$ENV" sftp 2>&1 | head -1 >&2
+  terminus connection:set "$SITE_NAME.$ENV" sftp 2>&1 | head -1 >&2 || true
   sleep 3
-elif [ "$CONN_MODE" = "unknown" ]; then
+elif [ "$CONN_MODE" = "unknown" ] || echo "$CONN_MODE" | grep -qi "requested"; then
   echo "  Attempting to set SFTP mode anyway..." >&2
-  terminus connection:set "$SITE_NAME.$ENV" sftp 2>&1 | head -3 >&2
+  terminus connection:set "$SITE_NAME.$ENV" sftp 2>&1 | head -3 >&2 || true
   sleep 3
 fi
 
