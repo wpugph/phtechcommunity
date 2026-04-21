@@ -76,8 +76,8 @@ jobs:
             echo "  Testing WP-CLI..." >&2
             if ! terminus wp "$SITE_NAME.$ENV" -- core version --quiet 2>/dev/null; then
               echo "  ❌ ERROR: Cannot connect to WordPress via WP-CLI" >&2
-              echo "  Returning empty data for $ENV" >&2
-              # Return minimal valid JSON
+              echo "  Returning minimal data for $ENV" >&2
+              # Return minimal valid JSON but don't fail the script
               cat <<ERROREOF
           {
             "site_name": "$SITE_NAME",
@@ -90,10 +90,11 @@ jobs:
             "mu_plugins": {},
             "active_theme": "unknown",
             "multisite": false,
-            "last_updated": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+            "last_updated": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "error": "WP-CLI connectivity failed"
           }
           ERROREOF
-              return 1
+              return 0
             fi
             echo "  ✓ WP-CLI connected" >&2
 
