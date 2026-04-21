@@ -61,7 +61,7 @@ echo "  Command: terminus wp $SITE_NAME.$ENV -- core version" >&2
 WP_CLI_READY=false
 for i in {1..3}; do
   echo "    Attempt $i/3..." >&2
-  WP_TEST_OUTPUT=$(terminus wp "$SITE_NAME.$ENV" -- core version 2>&1)
+  WP_TEST_OUTPUT=$(terminus wp "$SITE_NAME.$ENV" -- core version 2>&1 || true)
   WP_TEST_EXIT=$?
 
   if [ $WP_TEST_EXIT -eq 0 ] && echo "$WP_TEST_OUTPUT" | grep -qE "^[0-9]+\.[0-9]+"; then
