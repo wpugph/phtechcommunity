@@ -1,5 +1,6 @@
 name: Sync Manifest from Pantheon
 
+# Syncs WordPress manifest files from Pantheon environments
 on:
   workflow_dispatch:
     inputs:
