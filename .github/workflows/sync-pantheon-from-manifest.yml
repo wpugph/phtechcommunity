@@ -222,7 +222,19 @@ jobs:
 
           # Sanity check before comparison
           if [ ! -f /tmp/manifest_plugins.txt ] || [ ! -s /tmp/manifest_plugins.txt ]; then
-            echo "❌ ERROR: Manifest plugins list is empty!"
+            echo "❌ ERROR: Manifest plugins list is empty for environment '$SOURCE_ENV'!"
+            echo ""
+            echo "Available environments in manifest:"
+            jq -r '.environments | keys[]' bin/manifest.json
+            echo ""
+            echo "Plugins count per environment:"
+            for env in dev test live local; do
+              count=$(jq -r ".environments.$env.plugins | length" bin/manifest.json 2>/dev/null || echo "0")
+              echo "  $env: $count plugins"
+            done
+            echo ""
+            echo "💡 Tip: Use a source environment that has plugins in the manifest."
+            echo "        Run the workflow again and select an environment with plugins."
             exit 1
           fi
 
@@ -754,9 +766,13 @@ jobs:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
         run: |
           echo "Capturing current Pantheon dev state to manifest..."
+          echo ""
+          echo "NOTE: This will update bin/manifest.json dev environment section"
+          echo ""
 
           # Get current WordPress version
           WP_VERSION=$(terminus wp "$SITE_NAME.dev" -- core version 2>/dev/null | grep -oE "^[0-9]+\.[0-9]+(\.[0-9]+)?" | head -1 || echo "unknown")
+          echo "WordPress version: $WP_VERSION"
 
           # Get DB version
           DB_VERSION=$(terminus wp "$SITE_NAME.dev" -- core version --extra 2>/dev/null | grep 'Database' | awk '{print $3}' || echo "unknown")
@@ -784,6 +800,17 @@ jobs:
 
           # Process themes JSON
           THEMES_OBJ=$(cat /tmp/current_themes_final.json | jq -r 'if type == "array" then map({(.name): {version: .version, status: .status, update: .update}}) | add // {} else {} end' 2>/dev/null || echo "{}")
+
+          # Validate that we got actual data
+          PLUGIN_COUNT=$(echo "$PLUGINS_OBJ" | jq 'length')
+          THEME_COUNT=$(echo "$THEMES_OBJ" | jq 'length')
+          echo "Captured $PLUGIN_COUNT plugins and $THEME_COUNT themes"
+
+          if [ "$PLUGIN_COUNT" -eq 0 ] && [ "$THEME_COUNT" -eq 0 ]; then
+            echo "⚠️  WARNING: No plugins or themes captured. This might indicate a parsing error."
+            echo "Skipping manifest update to avoid overwriting with empty data."
+            exit 0
+          fi
 
           # Process MU plugins
           MU_PLUGINS_OBJ=$(echo "$MU_PLUGINS_JSON" | jq 'to_entries | map({(.key): {version: .value.Version, name: .value.Name}}) | add // {}' 2>/dev/null || echo "{}")
