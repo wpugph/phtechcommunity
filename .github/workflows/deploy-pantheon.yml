@@ -77,8 +77,8 @@ jobs:
           echo "Installing dependencies from manifest..."
 
           # Check if manifest exists
-          if [ ! -f "bin/manifest.json" ]; then
-            echo "⚠️ No bin/manifest.json found, skipping dependency installation"
+          if [ ! -f "bin/manifest.dev.json" ]; then
+            echo "⚠️ No bin/manifest.dev.json found, skipping dependency installation"
             exit 0
           fi
 
@@ -86,12 +86,12 @@ jobs:
           sudo apt-get update && sudo apt-get install -y jq
 
           # Get plugins list
-          PLUGINS=$(jq -r '.environments.dev.plugins | keys[]' bin/manifest.json 2>/dev/null || echo "")
+          PLUGINS=$(jq -r '.plugins | keys[]' bin/manifest.dev.json 2>/dev/null || echo "")
 
           if [ -n "$PLUGINS" ]; then
             for PLUGIN in $PLUGINS; do
-              VERSION=$(jq -r ".environments.dev.plugins.\"$PLUGIN\".version" bin/manifest.json)
-              STATUS=$(jq -r ".environments.dev.plugins.\"$PLUGIN\".status" bin/manifest.json)
+              VERSION=$(jq -r ".plugins.\"$PLUGIN\".version" bin/manifest.dev.json)
+              STATUS=$(jq -r ".plugins.\"$PLUGIN\".status" bin/manifest.dev.json)
 
               echo "→ Installing $PLUGIN version $VERSION"
               terminus wp "$SITE_NAME.$PANTHEON_ENV" -- plugin install "$PLUGIN" --version="$VERSION" --force || true
@@ -103,11 +103,11 @@ jobs:
           fi
 
           # Get themes list (exclude custom theme)
-          THEMES=$(jq -r '.environments.dev.themes | keys[] | select(. != "phcommunity.tech")' bin/manifest.json 2>/dev/null || echo "")
+          THEMES=$(jq -r '.themes | keys[] | select(. != "phcommunity.tech")' bin/manifest.dev.json 2>/dev/null || echo "")
 
           if [ -n "$THEMES" ]; then
             for THEME in $THEMES; do
-              VERSION=$(jq -r ".environments.dev.themes.\"$THEME\".version" bin/manifest.json)
+              VERSION=$(jq -r ".themes.\"$THEME\".version" bin/manifest.dev.json)
 
               echo "→ Installing $THEME version $VERSION"
               terminus wp "$SITE_NAME.$PANTHEON_ENV" -- theme install "$THEME" --version="$VERSION" --force || true
@@ -115,7 +115,7 @@ jobs:
           fi
 
           # Activate theme
-          ACTIVE_THEME=$(jq -r '.environments.dev.active_theme' bin/manifest.json 2>/dev/null || echo "")
+          ACTIVE_THEME=$(jq -r '.active_theme' bin/manifest.dev.json 2>/dev/null || echo "")
           if [ -n "$ACTIVE_THEME" ] && [ "$ACTIVE_THEME" != "null" ]; then
             echo "→ Activating theme: $ACTIVE_THEME"
             terminus wp "$SITE_NAME.$PANTHEON_ENV" -- theme activate "$ACTIVE_THEME" || true
@@ -142,5 +142,5 @@ jobs:
           echo "  - Environment manifest"
           echo ""
           echo "🔄 Installed from manifest:"
-          jq -r '.environments.dev.plugins | length' bin/manifest.json 2>/dev/null | xargs echo "  - Plugins:" || echo "  - Plugins: N/A"
-          jq -r '.environments.dev.themes | length' bin/manifest.json 2>/dev/null | xargs echo "  - Themes:" || echo "  - Themes: N/A"
+          jq -r '.plugins | length' bin/manifest.dev.json 2>/dev/null | xargs echo "  - Plugins:" || echo "  - Plugins: N/A"
+          jq -r '.themes | length' bin/manifest.dev.json 2>/dev/null | xargs echo "  - Themes:" || echo "  - Themes: N/A"

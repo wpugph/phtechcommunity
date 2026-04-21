@@ -49,23 +49,6 @@ jobs:
           # Get site UUID
           SITE_UUID=$(terminus site:info "$SITE_NAME" --field=id)
 
-          # Initialize manifest
-          cat > bin/manifest.json <<EOF
-          {
-            "pantheon": {
-              "site_name": "$SITE_NAME",
-              "site_id": "$SITE_UUID",
-              "last_sync": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-            },
-            "environments": {
-              "dev": {},
-              "test": {},
-              "live": {},
-              "multidevs": {}
-            }
-          }
-          EOF
-
           # Function to get environment data
           get_env_data() {
             local ENV=$1
@@ -94,6 +77,9 @@ jobs:
             # Build JSON
             cat <<ENVEOF
           {
+            "site_name": "$SITE_NAME",
+            "site_id": "$SITE_UUID",
+            "environment": "$ENV",
             "wordpress": {
               "version": "$WP_VERSION",
               "db_version": "unknown"
@@ -116,12 +102,13 @@ jobs:
             ENVS_TO_SYNC=$(echo "$SYNC_ENVS" | tr ',' ' ')
           fi
 
-          # Sync each environment
+          # Sync each environment to its own file
           for ENV in $ENVS_TO_SYNC; do
             if [ "$ENV" = "dev" ] || [ "$ENV" = "test" ] || [ "$ENV" = "live" ]; then
+              echo "→ Syncing $ENV to manifest.$ENV.json..." >&2
               ENV_DATA=$(get_env_data "$ENV")
-              jq --argjson data "$ENV_DATA" ".environments.$ENV = \$data" bin/manifest.json > bin/manifest.json.tmp
-              mv bin/manifest.json.tmp bin/manifest.json
+              echo "$ENV_DATA" | jq '.' > "bin/manifest.$ENV.json"
+              echo "  ✅ Saved bin/manifest.$ENV.json" >&2
             fi
           done
 
@@ -133,30 +120,30 @@ jobs:
           if [ "$MULTIDEV_COUNT" -gt 0 ]; then
             echo "  Found $MULTIDEV_COUNT multidev(s)" >&2
             echo "$MULTIDEVS" | jq -r '.[].id' | while read -r MULTIDEV_NAME; do
+              echo "  → Syncing $MULTIDEV_NAME to manifest.$MULTIDEV_NAME.json..." >&2
               MULTIDEV_DATA=$(get_env_data "$MULTIDEV_NAME")
-              jq --arg name "$MULTIDEV_NAME" --argjson data "$MULTIDEV_DATA" \
-                ".environments.multidevs[\$name] = \$data" bin/manifest.json > bin/manifest.json.tmp
-              mv bin/manifest.json.tmp bin/manifest.json
+              echo "$MULTIDEV_DATA" | jq '.' > "bin/manifest.$MULTIDEV_NAME.json"
+              echo "    ✅ Saved bin/manifest.$MULTIDEV_NAME.json" >&2
             done
           else
             echo "  No multidev environments found" >&2
           fi
 
-          # Pretty print
-          jq '.' bin/manifest.json > bin/manifest.json.tmp
-          mv bin/manifest.json.tmp bin/manifest.json
-
-          echo "✅ Manifest synced successfully!" >&2
+          echo "✅ Manifests synced successfully!" >&2
 
       - name: Check for changes
         id: check_changes
         run: |
-          if git diff --quiet bin/manifest.json; then
+          if git diff --quiet bin/manifest.*.json; then
             echo "changed=false" >> $GITHUB_OUTPUT
-            echo "ℹ️  No changes detected in manifest"
+            echo "ℹ️  No changes detected in manifests"
           else
             echo "changed=true" >> $GITHUB_OUTPUT
-            echo "✨ Changes detected in manifest"
+            echo "✨ Changes detected in manifests"
+
+            # Show which files changed
+            echo "Changed files:"
+            git diff --name-only bin/manifest.*.json | sed 's/^/  - /'
           fi
 
       - name: Commit and push changes
@@ -165,21 +152,29 @@ jobs:
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
 
-          git add bin/manifest.json
+          git add bin/manifest.*.json
 
           # Create commit message with summary
+          CHANGED_FILES=$(git diff --cached --name-only bin/manifest.*.json | xargs -n1 basename)
+
           cat > /tmp/commit-msg.txt <<EOF
-          Update manifest from Pantheon
+          Update manifests from Pantheon
 
           Synced environments: ${{ github.event.inputs.environments || 'all' }}
 
-          Changes:
-          $(git diff --cached bin/manifest.json | grep -E '^\+.*"version"' | head -10 || echo "  - Environment state updated")
+          Updated files:
+          $(echo "$CHANGED_FILES" | sed 's/^/  - /')
 
           🤖 Auto-synced by GitHub Actions
           EOF
 
           git commit -F /tmp/commit-msg.txt
+
+          # Pull with rebase to avoid conflicts
+          git pull --rebase origin ${{ github.ref_name }} || {
+            echo "⚠️ Pull failed, attempting to continue..."
+          }
+
           git push
 
       - name: Summary
@@ -199,6 +194,12 @@ jobs:
 
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Environment Versions" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
-          jq '.environments | to_entries | map({(.key): .value.wordpress.version}) | add' bin/manifest.json >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          for manifest_file in bin/manifest.*.json; do
+            if [ -f "$manifest_file" ]; then
+              env_name=$(basename "$manifest_file" .json | sed 's/manifest\.//')
+              wp_version=$(jq -r '.wordpress.version // "unknown"' "$manifest_file")
+              echo "- **$env_name**: $wp_version" >> $GITHUB_STEP_SUMMARY
+            fi
+          done

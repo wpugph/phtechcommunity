@@ -22,7 +22,6 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-MANIFEST_FILE="$SCRIPT_DIR/manifest.json"
 EXCLUDE_FILE="$SCRIPT_DIR/manifest-exclude.txt"
 
 # Load exclusions from file (skip comments and empty lines)
@@ -71,10 +70,15 @@ for arg in "$@"; do
     esac
 done
 
-# Get site name from argument or prompt
+# Get site name from argument or existing manifest files
 if [ -z "$SITE_NAME" ]; then
-    if [ -f "$MANIFEST_FILE" ]; then
-        SITE_NAME=$(jq -r '.pantheon.site_name' "$MANIFEST_FILE" 2>/dev/null)
+    # Try to get site name from existing dev manifest
+    if [ -f "$SCRIPT_DIR/manifest.dev.json" ]; then
+        SITE_NAME=$(jq -r '.site_name // empty' "$SCRIPT_DIR/manifest.dev.json" 2>/dev/null)
+    fi
+    # Fallback to old manifest.json if it exists
+    if [ -z "$SITE_NAME" ] && [ -f "$SCRIPT_DIR/manifest.json" ]; then
+        SITE_NAME=$(jq -r '.pantheon.site_name // empty' "$SCRIPT_DIR/manifest.json" 2>/dev/null)
     fi
     if [ "$SITE_NAME" == "your-site-name" ] || [ -z "$SITE_NAME" ] || [ "$SITE_NAME" == "null" ]; then
         read -p "Enter Pantheon site name: " SITE_NAME
@@ -108,7 +112,10 @@ echo -e "     • All plugins (versions, status, updates)"
 echo -e "     • All themes (versions, status, updates)"
 echo -e "     • MU plugins"
 echo -e "     • Active theme"
-echo -e "  4. Save all data to: ${YELLOW}bin/manifest.json${NC}"
+echo -e "  4. Save each environment to separate files:"
+echo -e "     • ${YELLOW}bin/manifest.dev.json${NC}"
+echo -e "     • ${YELLOW}bin/manifest.test.json${NC}"
+echo -e "     • ${YELLOW}bin/manifest.live.json${NC}"
 echo ""
 
 # Show exclusions if any
@@ -122,7 +129,8 @@ fi
 
 echo -e "${BLUE}Note:${NC}"
 echo -e "  • Multidev environments will be ${YELLOW}skipped${NC} (only dev, test, live)"
-echo -e "  • This will ${YELLOW}overwrite${NC} existing manifest data"
+echo -e "  • Each environment is saved to its own file (manifest.[env].json)"
+echo -e "  • Existing files will be ${YELLOW}overwritten${NC}"
 echo -e "  • The process takes ${YELLOW}~2-3 minutes${NC} depending on environment size"
 echo ""
 
@@ -210,6 +218,9 @@ get_env_data() {
 
     # Build JSON structure using jq (cleaner and safer than heredoc)
     jq -n \
+        --arg site_name "$SITE_NAME" \
+        --arg site_id "$SITE_UUID" \
+        --arg environment "$ENV" \
         --arg wp_version "$WP_VERSION" \
         --arg db_version "$DB_VERSION" \
         --arg php_version "$PHP_VERSION" \
@@ -220,6 +231,9 @@ get_env_data() {
         --argjson multisite "$IS_MULTISITE" \
         --arg last_updated "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
         '{
+            site_name: $site_name,
+            site_id: $site_id,
+            environment: $environment,
             wordpress: {
                 version: $wp_version,
                 db_version: $db_version
@@ -236,52 +250,13 @@ get_env_data() {
     echo -e "${GREEN}  ✓ $ENV synced${NC}" >&2
 }
 
-# Create temp file for building new manifest
-TMP_MANIFEST=$(mktemp)
-
-# Preserve existing manifest structure and non-Pantheon environments (like 'local')
-if [ -f "$MANIFEST_FILE" ]; then
-    echo -e "${BLUE}Preserving existing manifest structure and non-Pantheon environments...${NC}" >&2
-    # Copy existing manifest as base, updating only Pantheon metadata
-    jq --arg site_name "$SITE_NAME" \
-        --arg site_id "$SITE_UUID" \
-        --arg last_sync "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
-        '.pantheon.site_name = $site_name |
-         .pantheon.site_id = $site_id |
-         .pantheon.last_sync = $last_sync |
-         .environments.dev = {} |
-         .environments.test = {} |
-         .environments.live = {} |
-         .environments.multidevs = {}' \
-        "$MANIFEST_FILE" > "$TMP_MANIFEST"
-else
-    # Create new manifest if none exists
-    echo -e "${BLUE}Creating new manifest...${NC}" >&2
-    jq -n \
-        --arg site_name "$SITE_NAME" \
-        --arg site_id "$SITE_UUID" \
-        --arg last_sync "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
-        '{
-            pantheon: {
-                site_name: $site_name,
-                site_id: $site_id,
-                last_sync: $last_sync
-            },
-            environments: {
-                dev: {},
-                test: {},
-                live: {},
-                multidevs: {}
-            }
-        }' > "$TMP_MANIFEST"
-fi
-
-# Sync standard environments
+# Sync each environment to its own file
 for ENV in dev test live; do
     ENV_DATA=$(get_env_data "$ENV")
     if [ $? -eq 0 ]; then
-        jq --argjson data "$ENV_DATA" ".environments.$ENV = \$data" "$TMP_MANIFEST" > "$TMP_MANIFEST.tmp"
-        mv "$TMP_MANIFEST.tmp" "$TMP_MANIFEST"
+        ENV_FILE="$SCRIPT_DIR/manifest.${ENV}.json"
+        echo "$ENV_DATA" | jq '.' > "$ENV_FILE"
+        echo -e "${GREEN}  ✓ Saved to manifest.${ENV}.json${NC}" >&2
     fi
 done
 
@@ -289,18 +264,17 @@ done
 # Multidevs add significant time and complexity to the sync process
 echo -e "${BLUE}  Skipping multidev environments (focusing on dev, test, live)${NC}" >&2
 
-# Save final manifest
-cat "$TMP_MANIFEST" | jq '.' > "$MANIFEST_FILE"
-rm -f "$TMP_MANIFEST" "$TMP_MANIFEST.tmp"
-
 echo "" >&2
 echo -e "${GREEN}╔════════════════════════════════════════════╗${NC}" >&2
-echo -e "${GREEN}║  ✓ Manifest saved successfully!            ║${NC}" >&2
+echo -e "${GREEN}║  ✓ Manifests saved successfully!           ║${NC}" >&2
 echo -e "${GREEN}╚════════════════════════════════════════════╝${NC}" >&2
-echo -e "${BLUE}Manifest saved to: $MANIFEST_FILE${NC}" >&2
+echo -e "${BLUE}Files created:${NC}" >&2
+echo -e "  • bin/manifest.dev.json" >&2
+echo -e "  • bin/manifest.test.json" >&2
+echo -e "  • bin/manifest.live.json" >&2
 echo "" >&2
 echo -e "${YELLOW}Next steps:${NC}" >&2
-echo -e "  1. Review bin/manifest.json" >&2
-echo -e "  2. Commit to git: git add bin/manifest.json && git commit -m 'Update manifest from Pantheon'" >&2
-echo -e "  3. Sync local: ./bin/local-install-from-manifest.sh" >&2
+echo -e "  1. Review the manifest files in bin/" >&2
+echo -e "  2. Commit to git: git add bin/manifest.*.json && git commit -m 'Update Pantheon manifests'" >&2
+echo -e "  3. Sync local: ./bin/local-install-from-manifest.sh --source-env=dev" >&2
 echo "" >&2

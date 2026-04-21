@@ -33,7 +33,6 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-MANIFEST_FILE="$SCRIPT_DIR/manifest.json"
 EXCLUDE_FILE="$SCRIPT_DIR/manifest-exclude.txt"
 
 # Load exclusions from file (skip comments and empty lines)
@@ -75,10 +74,19 @@ for arg in "$@"; do
     esac
 done
 
+# Set manifest file based on source environment
+MANIFEST_FILE="$SCRIPT_DIR/manifest.${SOURCE_ENV}.json"
+
 # Check if manifest exists
 if [ ! -f "$MANIFEST_FILE" ]; then
     echo -e "${RED}Error: Manifest file not found at $MANIFEST_FILE${NC}"
-    echo "Run ./bin/save-pantheon-to-manifest.sh first to create the manifest"
+    echo ""
+    echo "Available manifest files:"
+    ls -1 "$SCRIPT_DIR"/manifest.*.json 2>/dev/null || echo "  (none found)"
+    echo ""
+    echo "Run one of these to create manifests:"
+    echo "  • ./bin/save-pantheon-to-manifest.sh  (for dev, test, live)"
+    echo "  • ./bin/save-local-to-manifest.sh     (for local)"
     exit 1
 fi
 
@@ -109,13 +117,11 @@ echo -e "${CYAN}║  Sync Local from Manifest                                   
 echo -e "${CYAN}╚════════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
-# Extract environment data from manifest
-ENV_DATA=$(jq -r ".environments.$SOURCE_ENV" "$MANIFEST_FILE")
+# Extract environment data from manifest (entire file is the environment data)
+ENV_DATA=$(jq -r "." "$MANIFEST_FILE")
 
 if [ "$ENV_DATA" == "null" ] || [ "$ENV_DATA" == "{}" ]; then
-    echo -e "${RED}Error: Environment '$SOURCE_ENV' not found in manifest${NC}"
-    echo "Available environments:"
-    jq -r '.environments | keys[]' "$MANIFEST_FILE"
+    echo -e "${RED}Error: Manifest file is empty or invalid${NC}"
     exit 1
 fi
 

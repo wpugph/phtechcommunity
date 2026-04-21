@@ -93,9 +93,21 @@ jobs:
         run: |
           SITE_NAME="${{ secrets.PANTHEON_SITE_NAME }}"
           SOURCE_ENV="${{ github.event.inputs.source_env }}"
+          MANIFEST_FILE="bin/manifest.${SOURCE_ENV}.json"
 
           echo "site_name=$SITE_NAME" >> $GITHUB_OUTPUT
           echo "source_env=$SOURCE_ENV" >> $GITHUB_OUTPUT
+          echo "manifest_file=$MANIFEST_FILE" >> $GITHUB_OUTPUT
+
+          # Check if manifest file exists
+          if [ ! -f "$MANIFEST_FILE" ]; then
+            echo "❌ ERROR: Manifest file not found: $MANIFEST_FILE"
+            echo ""
+            echo "Available manifest files:"
+            ls -1 bin/manifest.*.json 2>/dev/null || echo "  (none found)"
+            echo ""
+            exit 1
+          fi
 
           # Load exclusions
           if [ -f "bin/manifest-exclude.txt" ]; then
@@ -145,8 +157,9 @@ jobs:
           fi
 
           # Get target versions from manifest
-          WP_TARGET=$(jq -r ".environments.$SOURCE_ENV.wordpress.version // \"unknown\"" bin/manifest.json)
-          THEME_TARGET=$(jq -r ".environments.$SOURCE_ENV.active_theme // \"unknown\"" bin/manifest.json)
+          MANIFEST_FILE="${{ steps.load_manifest.outputs.manifest_file }}"
+          WP_TARGET=$(jq -r ".wordpress.version // \"unknown\"" "$MANIFEST_FILE")
+          THEME_TARGET=$(jq -r ".active_theme // \"unknown\"" "$MANIFEST_FILE")
 
           # Get current WordPress version
           terminus wp "$SITE_NAME.dev" -- core version > /tmp/wp_version.txt 2>&1
@@ -173,7 +186,8 @@ jobs:
           fi
 
           # Get plugins from manifest and current state
-          jq -r ".environments.$SOURCE_ENV.plugins | to_entries[] | \"\(.key)|\(.value.version)|\(.value.status)\"" bin/manifest.json > /tmp/manifest_plugins.txt
+          MANIFEST_FILE="${{ steps.load_manifest.outputs.manifest_file }}"
+          jq -r ".plugins | to_entries[] | \"\(.key)|\(.value.version)|\(.value.status)\"" "$MANIFEST_FILE" > /tmp/manifest_plugins.txt
 
           # Get current plugins from Pantheon dev
           echo "Fetching current plugin list from Pantheon dev..."
@@ -224,17 +238,16 @@ jobs:
           if [ ! -f /tmp/manifest_plugins.txt ] || [ ! -s /tmp/manifest_plugins.txt ]; then
             echo "❌ ERROR: Manifest plugins list is empty for environment '$SOURCE_ENV'!"
             echo ""
-            echo "Available environments in manifest:"
-            jq -r '.environments | keys[]' bin/manifest.json
+            echo "Manifest file: $MANIFEST_FILE"
+            count=$(jq -r ".plugins | length" "$MANIFEST_FILE" 2>/dev/null || echo "0")
+            echo "Plugins in manifest: $count"
             echo ""
-            echo "Plugins count per environment:"
-            for env in dev test live local; do
-              count=$(jq -r ".environments.$env.plugins | length" bin/manifest.json 2>/dev/null || echo "0")
-              echo "  $env: $count plugins"
-            done
+            echo "Available manifest files:"
+            ls -1 bin/manifest.*.json 2>/dev/null || echo "  (none found)"
             echo ""
-            echo "💡 Tip: Use a source environment that has plugins in the manifest."
-            echo "        Run the workflow again and select an environment with plugins."
+            echo "💡 Tip: Make sure the manifest file has plugins."
+            echo "        Run: ./bin/save-local-to-manifest.sh (for local)"
+            echo "        Or: ./bin/save-pantheon-to-manifest.sh (for dev/test/live)"
             exit 1
           fi
 
@@ -295,7 +308,8 @@ jobs:
           echo ""
 
           # Get themes from manifest and current state
-          jq -r ".environments.$SOURCE_ENV.themes | to_entries[] | \"\(.key)|\(.value.version)\"" bin/manifest.json > /tmp/manifest_themes.txt || echo "" > /tmp/manifest_themes.txt
+          MANIFEST_FILE="${{ steps.load_manifest.outputs.manifest_file }}"
+          jq -r ".themes | to_entries[] | \"\(.key)|\(.value.version)\"" "$MANIFEST_FILE" > /tmp/manifest_themes.txt || echo "" > /tmp/manifest_themes.txt
 
           # Get current themes from Pantheon dev
           terminus wp "$SITE_NAME.dev" -- theme list --format=json > /tmp/theme_raw.txt 2>&1
@@ -767,7 +781,7 @@ jobs:
         run: |
           echo "Capturing current Pantheon dev state to manifest..."
           echo ""
-          echo "NOTE: This will update bin/manifest.json dev environment section"
+          echo "NOTE: This will update bin/manifest.dev.json"
           echo ""
 
           # Get current WordPress version
@@ -815,8 +829,14 @@ jobs:
           # Process MU plugins
           MU_PLUGINS_OBJ=$(echo "$MU_PLUGINS_JSON" | jq 'to_entries | map({(.key): {version: .value.Version, name: .value.Name}}) | add // {}' 2>/dev/null || echo "{}")
 
+          # Get site UUID
+          SITE_UUID=$(terminus site:info "$SITE_NAME" --field=id 2>/dev/null || echo "unknown")
+
           # Build dev environment data
           DEV_ENV_DATA=$(jq -n \
+              --arg site_name "$SITE_NAME" \
+              --arg site_id "$SITE_UUID" \
+              --arg environment "dev" \
               --arg wp_version "$WP_VERSION" \
               --arg db_version "$DB_VERSION" \
               --arg php_version "$PHP_VERSION" \
@@ -827,6 +847,9 @@ jobs:
               --argjson multisite "$IS_MULTISITE" \
               --arg last_updated "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
               '{
+                  site_name: $site_name,
+                  site_id: $site_id,
+                  environment: $environment,
                   wordpress: {
                       version: $wp_version,
                       db_version: $db_version
@@ -840,14 +863,10 @@ jobs:
                   last_updated: $last_updated
               }')
 
-          # Update manifest file with new dev data
-          jq --argjson data "$DEV_ENV_DATA" \
-              --arg last_sync "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
-              '.environments.dev = $data | .pantheon.last_sync = $last_sync' \
-              bin/manifest.json > bin/manifest.json.tmp
-          mv bin/manifest.json.tmp bin/manifest.json
+          # Save to manifest.dev.json
+          echo "$DEV_ENV_DATA" | jq '.' > bin/manifest.dev.json
 
-          echo "✅ Manifest updated with current dev state"
+          echo "✅ Manifest updated: bin/manifest.dev.json"
 
       - name: Commit updated manifest
         if: fromJSON(steps.compare.outputs.total_actions) > 0
@@ -855,15 +874,21 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          if git diff --quiet bin/manifest.json; then
+          if git diff --quiet bin/manifest.dev.json; then
             echo "No changes to manifest"
           else
-            git add bin/manifest.json
-            git commit -m "Update manifest: sync from ${{ steps.load_manifest.outputs.source_env }} to dev (automated)
+            git add bin/manifest.dev.json
+            git commit -m "Update dev manifest: sync from ${{ steps.load_manifest.outputs.source_env }} (automated)
 
             Captured current Pantheon dev state after sync.
 
             Co-Authored-By: github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+
+            # Pull with rebase to avoid conflicts if remote has changes
+            git pull --rebase origin ${{ github.ref_name }} || {
+              echo "⚠️ Pull failed, attempting to continue..."
+            }
+
             git push
             echo "✅ Manifest committed and pushed"
           fi

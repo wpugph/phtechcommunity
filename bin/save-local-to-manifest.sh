@@ -8,7 +8,6 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-MANIFEST_FILE="$SCRIPT_DIR/manifest.json"
 EXCLUDE_FILE="$SCRIPT_DIR/manifest-exclude.txt"
 
 # Colors for output
@@ -30,6 +29,9 @@ for arg in "$@"; do
             ;;
     esac
 done
+
+# Set manifest file based on target environment
+MANIFEST_FILE="$SCRIPT_DIR/manifest.${TARGET_ENV}.json"
 
 # Check if jq is installed
 if ! command -v jq &> /dev/null; then
@@ -103,6 +105,9 @@ MU_PLUGINS_OBJ=$(echo "$MU_PLUGINS_JSON" | jq 'to_entries | map({(.key): {versio
 
 # Build environment data
 ENV_DATA=$(jq -n \
+    --arg site_name "local" \
+    --arg site_id "local-dev" \
+    --arg environment "$TARGET_ENV" \
     --arg wp_version "$WP_VERSION" \
     --arg db_version "$DB_VERSION" \
     --arg php_version "$PHP_VERSION" \
@@ -113,6 +118,9 @@ ENV_DATA=$(jq -n \
     --argjson multisite "$IS_MULTISITE" \
     --arg last_updated "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
     '{
+        site_name: $site_name,
+        site_id: $site_id,
+        environment: $environment,
         wordpress: {
             version: $wp_version,
             db_version: $db_version
@@ -126,39 +134,8 @@ ENV_DATA=$(jq -n \
         last_updated: $last_updated
     }')
 
-# Update manifest file
-if [ ! -f "$MANIFEST_FILE" ]; then
-    # Create new manifest if it doesn't exist
-    echo -e "${YELLOW}Creating new manifest file...${NC}"
-    jq -n \
-        --arg site_name "local" \
-        --arg site_id "local-dev" \
-        --arg last_sync "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
-        --argjson env_data "$ENV_DATA" \
-        --arg env_name "$TARGET_ENV" \
-        '{
-            pantheon: {
-                site_name: $site_name,
-                site_id: $site_id,
-                last_sync: $last_sync
-            },
-            environments: {
-                ($env_name): $env_data,
-                dev: {},
-                test: {},
-                live: {},
-                multidevs: {}
-            }
-        }' > "$MANIFEST_FILE"
-else
-    # Update existing manifest
-    jq --argjson data "$ENV_DATA" \
-        --arg env "$TARGET_ENV" \
-        --arg last_sync "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
-        '.environments[$env] = $data | .pantheon.last_sync = $last_sync' \
-        "$MANIFEST_FILE" > "$MANIFEST_FILE.tmp"
-    mv "$MANIFEST_FILE.tmp" "$MANIFEST_FILE"
-fi
+# Update manifest file - store environment data directly
+echo "$ENV_DATA" | jq '.' > "$MANIFEST_FILE"
 
 # Get counts
 PLUGIN_COUNT=$(echo "$PLUGINS_OBJ" | jq 'length')
@@ -178,6 +155,6 @@ echo -e "  Themes: ${THEME_COUNT}"
 echo -e "  Active Theme: ${ACTIVE_THEME}"
 echo ""
 echo -e "${YELLOW}Next steps:${NC}"
-echo -e "  1. Review bin/manifest.json"
-echo -e "  2. Commit to git: git add bin/manifest.json && git commit -m 'Update manifest from local'"
+echo -e "  1. Review bin/manifest.${TARGET_ENV}.json"
+echo -e "  2. Commit to git: git add bin/manifest.${TARGET_ENV}.json && git commit -m 'Update ${TARGET_ENV} manifest'"
 echo ""
