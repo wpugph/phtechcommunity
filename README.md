@@ -1,7 +1,7 @@
 # EventsPH - Philippine Tech Community Events Platform
 
 [![Pantheon](https://img.shields.io/badge/Pantheon-Hosted-yellow)](https://pantheon.io)
-[![WordPress](https://img.shields.io/badge/WordPress-6.8.3-blue)](https://wordpress.org)
+[![WordPress](https://img.shields.io/badge/WordPress-6.9.4-blue)](https://wordpress.org)
 [![PHP](https://img.shields.io/badge/PHP-7.4-purple)](https://php.net)
 [![License](https://img.shields.io/badge/license-GPL--2.0-green)](LICENSE)
 
@@ -31,18 +31,21 @@ EventsPH is a community-driven platform that aggregates and promotes technology 
 ## 🛠️ Tech Stack
 
 **Platform:**
-- **CMS:** WordPress 6.8.3
+- **CMS:** WordPress 6.9.4
 - **Hosting:** Pantheon (PHP 7.4 across all environments)
 - **Version Control:** Git + GitHub
 - **CI/CD:** GitHub Actions
 
 **Key Plugins:**
 - The Events Calendar
+- Formidable Forms
 - Jetpack
 - Wordfence Security
 - SendGrid Email Delivery
 - Redirection
-- And more (see `bin/manifest.json`)
+- Advanced Custom Fields
+- Akismet Anti-Spam
+- And more (see `bin/manifest.*.json`)
 
 **Custom Development:**
 - **Theme:** `/wp-content/themes/phcommunity.tech/`
@@ -56,29 +59,32 @@ This repository uses a **manifest-based deployment approach** - only custom code
 
 ```
 .
-├── bin/                              # Deployment tools (NOT deployed to Pantheon)
-│   ├── manifest.json                 # Environment state for dev/test/live
-│   ├── manifest-exclude.txt          # Plugins/themes to exclude from manifest
-│   ├── sync-manifest.sh              # Sync from Pantheon to manifest
-│   ├── local-install-from-manifest.sh              # Install from manifest to local
-│   └── bootstrap-env.sh              # Legacy: Replicate environment locally
+├── bin/                                       # Deployment tools (NOT deployed)
+│   ├── manifest.local.json                    # Local WordPress state
+│   ├── manifest.dev.json                      # Pantheon dev environment state
+│   ├── manifest.test.json                     # Pantheon test environment state
+│   ├── manifest.live.json                     # Pantheon live environment state
+│   ├── manifest-exclude.txt                   # Plugins/themes to exclude
+│   ├── save-local-to-manifest.sh              # Capture local state
+│   ├── save-pantheon-to-manifest.sh           # Capture Pantheon states
+│   └── local-install-from-manifest.sh         # Install from manifest to local
 ├── .github/workflows/
-│   ├── deploy-pantheon.yml           # Auto-deploy on merged PRs
-│   ├── sync-manifest-from-pantheon.yml  # Scheduled manifest sync
-│   └── sync-plugins-to-pantheon.yml  # Sync plugins/themes to Pantheon
+│   ├── deploy-pantheon.yml                    # Auto-deploy on merged PRs
+│   ├── sync-manifest-from-pantheon.yml        # Sync manifests from Pantheon
+│   └── sync-pantheon-from-manifest.yml        # Sync dev from manifest
 ├── wp-content/
-│   ├── themes/phcommunity.tech/      # ✅ Custom theme (tracked)
-│   ├── plugins/                      # ❌ Not tracked (managed via manifest)
-│   ├── themes/                       # ❌ Not tracked (managed via manifest)
-│   └── mu-plugins/                   # ✅ Custom MU plugins (tracked)
-├── wp-config-local.php               # ✅ Local development config (Local by Flywheel)
-├── .gitignore                        # Excludes WP core, plugins, themes
-├── DOCS/                             # Documentation
-│   ├── DEPLOYMENT.md                 # Deployment guide
-│   ├── WORKFLOWS.md                  # GitHub Actions workflows
-│   ├── CHANGELOG.md                  # Change history
-│   └── URGENT-FIX.md                 # Critical fixes
-└── README.md                         # This file
+│   ├── themes/phcommunity.tech/               # ✅ Custom theme (tracked)
+│   ├── plugins/                               # ❌ Not tracked (via manifest)
+│   ├── themes/                                # ❌ Not tracked (via manifest)
+│   └── mu-plugins/                            # ✅ Custom MU plugins (tracked)
+├── wp-config-local.php                        # ✅ Local config (Local by Flywheel)
+├── .gitignore                                 # Excludes WP core, plugins, themes
+├── DOCS/                                      # Documentation
+│   ├── DEPLOYMENT.md                          # Deployment guide
+│   ├── WORKFLOWS.md                           # GitHub Actions workflows
+│   ├── CHANGELOG.md                           # Change history
+│   └── URGENT-FIX.md                          # Critical fixes
+└── README.md                                  # This file
 ```
 
 **What's tracked in Git:**
@@ -142,25 +148,27 @@ We recommend using **Local by Flywheel** for local WordPress development, but yo
    cat wp-config-local.php
    ```
 
-4. **Sync manifest from Pantheon:**
+4. **Sync manifests from Pantheon:**
    ```bash
    # First time: authenticate with Pantheon
    terminus auth:login --machine-token=YOUR_TOKEN
    
-   # Sync environment state
-   ./bin/sync-manifest.sh eventsph
+   # Sync all environment states (creates manifest.dev.json, etc.)
+   ./bin/save-pantheon-to-manifest.sh eventsph --yes
+   
+   # Or use GitHub Actions workflow: "Sync Manifest from Pantheon"
    ```
 
 5. **Install WordPress, plugins, and themes from manifest:**
    ```bash
-   # Install everything from dev environment
-   ./bin/local-install-from-manifest.sh
-   
-   # Or force reinstall if needed
-   ./bin/local-install-from-manifest.sh --force
+   # Install everything from dev environment (default)
+   ./bin/local-install-from-manifest.sh --yes
    
    # Install from test or live environment
-   ./bin/local-install-from-manifest.sh --source-env=live
+   ./bin/local-install-from-manifest.sh --source-env=live --yes
+   
+   # Force reinstall if needed
+   ./bin/local-install-from-manifest.sh --force --yes
    ```
 
 6. **Import database from Pantheon (optional):**

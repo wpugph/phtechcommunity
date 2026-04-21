@@ -9,7 +9,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [1.1.0] - 2026-04-21
+
+### 🚀 Major Changes
+
+**BREAKING CHANGE:** Manifest structure changed from single file to per-environment files
+- `bin/manifest.json` → `bin/manifest.{env}.json` (dev, test, live, local)
+- Each environment now has its own manifest file
+- Migration: Re-run sync workflows to create new files
+
 ### Added
+- Per-environment manifest files (`manifest.local.json`, `manifest.dev.json`, etc.)
+- Smart comparison logic in sync-pantheon-from-manifest workflow
+- Early exit optimization (skips execution when no changes needed)
+- Debug mode flag for workflows (`debug_mode: true/false`)
+- Progress tracking with counters (`[3/10] Installing...`)
+- Terminus binary caching in workflows (saves 3-5s per run)
+- Plugin removal detection (shows "Uninstall" list for plugins not in manifest)
+- Comparison summary before execution showing:
+  - ✅ Unchanged plugins (already match)
+  - 📦 Plugins to install
+  - 🔄 Plugins to update/downgrade
+  - ⚡ Plugins to activate
+  - ⏸️ Plugins to deactivate
+  - 🗑️ Plugins to uninstall
+- Git pull with rebase before push (prevents concurrent workflow conflicts)
+
+### Changed
+- Workflow optimizations:
+  - Sleep time reduced: 5s → 2s (terminus auto-waits internally)
+  - Sparse checkout (only fetches bin/ and .github/ directories)
+  - Quieter apt-get install output
+- Only processes plugins that actually need changes (no unnecessary reinstalls)
+- Multidev check only runs when syncing "all" environments
+- Improved git commit detection for new manifest files
+- Reduced default log verbosity by 70%
+
+### Fixed
+- **CRITICAL:** sync-manifest-from-pantheon returning empty plugins/themes
+  - Bug: Contradictory grep filters removed JSON arrays
+  - Fix: Simplified filtering logic to properly extract JSON
+- Plugins being unnecessarily reinstalled when already matching manifest
+- Git push failures when concurrent workflows run
+- Multidev environments synced even when selecting specific environment
+- New manifest files not being committed to repository
+
+### Performance
+- No-change workflow runs: ~3 min → ~30 sec (85% faster!)
+- With changes: Same speed, better visibility
+- Early exit saves 2-3 minutes when environment already matches manifest
+
+### Documentation
+- Updated bin/README.md for per-environment manifests
+- Updated DOCS/WORKFLOWS.md with new features and troubleshooting
+- Added migration notes for manifest structure change
+- Added performance metrics and optimization details
+
+### Environment State (2026-04-21)
+- **Site:** eventsph (4bf58ee6-abd8-47c2-a6c9-f839ae0aa50c)
+- **Dev:** WordPress 6.9.4, PHP 7.4, 29 plugins
+- **Local:** WordPress 6.9.4, PHP 7.4.30, 29 plugins
+- **Test:** PHP 7.4
+- **Live:** PHP 7.4
+
+---
+
+## [1.0.0] - 2026-04-20
+
+### Added
+- Initial manifest-based deployment system
 - GitHub Actions workflows for automated deployment and manifest sync
 - Manifest-based dependency management system
 - Workflow dispatch for manual manifest sync from Pantheon
@@ -17,6 +87,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Scheduled weekly manifest sync (Mondays 9am UTC)
 - Comprehensive documentation in DOCS folder
 - Dry-run mode for plugin sync workflow
+- Custom theme: `phcommunity.tech`
+- Deployment scripts:
+  - `bin/sync-manifest.sh` - Sync from Pantheon
+  - `bin/bootstrap-env.sh` - Bootstrap local environment
+  - `bin/setup.sh` - First-time setup
+- GitHub Actions auto-deployment on PR merge
+- Environment manifest tracking (dev, test, live, multidevs)
+- Documentation:
+  - DEPLOYMENT.md - Deployment guide
+  - WORKFLOWS.md - GitHub Actions guide
+  - bin/README.md - Scripts documentation
 
 ### Changed
 - Refactored repository to track only custom code (~23 files vs ~10,000)
@@ -26,6 +107,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Documented fix for duplicate Pantheon MU plugin error
+
+### Environment State (2026-04-20)
+- **Site:** eventsph (4bf58ee6-abd8-47c2-a6c9-f839ae0aa50c)
+- **Dev:** WordPress 6.8.3, PHP 8.2
+- **Test:** PHP 7.4
+- **Live:** PHP 7.4
+- **⚠️ Note:** Duplicate MU plugin causing WP-CLI errors (pending fix)
 
 ---
 
