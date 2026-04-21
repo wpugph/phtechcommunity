@@ -27,7 +27,7 @@
       "update_version": ""
     },
     "autoptimize": {
-      "version": "3.1.14",
+      "version": "3.1.13",
       "status": "inactive",
       "update": "available",
       "update_version": "3.1.15.1"
@@ -124,7 +124,7 @@
     },
     "seo-by-rank-math": {
       "version": "1.0.268",
-      "status": "active",
+      "status": "inactive",
       "update": "none",
       "update_version": ""
     },
@@ -172,7 +172,7 @@
     },
     "wordfence": {
       "version": "8.1.4",
-      "status": "inactive",
+      "status": "active",
       "update": "none",
       "update_version": ""
     },
@@ -208,5 +208,5 @@
   "mu_plugins": {},
   "active_theme": "astra",
   "multisite": false,
-  "last_updated": "2026-04-21T00:54:36Z"
+  "last_updated": "2026-04-21T01:08:07Z"
 }
