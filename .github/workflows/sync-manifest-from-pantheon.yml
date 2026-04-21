@@ -85,11 +85,13 @@ jobs:
 
             # Test WP-CLI connectivity with retry
             echo "  Testing WP-CLI connectivity..." >&2
+            echo "  Command: terminus wp $SITE_NAME.$ENV -- core version" >&2
             WP_CLI_READY=false
             for i in {1..3}; do
               echo "    Attempt $i/3..." >&2
               if terminus wp "$SITE_NAME.$ENV" -- core version --quiet 2>/dev/null; then
                 WP_CLI_READY=true
+                echo "    ✓ Success!" >&2
                 break
               fi
               if [ $i -lt 3 ]; then
@@ -100,11 +102,14 @@ jobs:
 
             if [ "$WP_CLI_READY" = "false" ]; then
               echo "  ❌ ERROR: Cannot connect to WordPress via WP-CLI after 3 attempts" >&2
+              echo "" >&2
               echo "  Diagnostics:" >&2
               echo "    Environment status:" >&2
               terminus env:info "$SITE_NAME.$ENV" 2>&1 | grep -E "(initialized|locked|connection_mode)" | sed 's/^/      /' || echo "      (unable to get status)"
-              echo "    Last WP-CLI error:" >&2
-              terminus wp "$SITE_NAME.$ENV" -- core version 2>&1 | head -5 | sed 's/^/      /'
+              echo "" >&2
+              echo "    Last WP-CLI error (full output):" >&2
+              terminus wp "$SITE_NAME.$ENV" -- core version 2>&1 | sed 's/^/      /'
+              echo "" >&2
               echo "  Returning minimal data for $ENV" >&2
               # Return minimal valid JSON but don't fail the script
               cat <<ERROREOF
