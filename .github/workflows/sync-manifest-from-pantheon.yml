@@ -234,26 +234,27 @@ jobs:
           git add bin/manifest.*.json 2>/dev/null || true
 
           # Check if there are any changes (modified or new files)
-          if git diff --cached --quiet bin/manifest.*.json 2>/dev/null; then
+          # Use -- to separate paths from revisions and check bin/ directory
+          if git diff --cached --quiet -- bin/ 2>/dev/null; then
             echo "changed=false" >> $GITHUB_OUTPUT
             echo "ℹ️  No changes detected in manifests"
           else
             echo "changed=true" >> $GITHUB_OUTPUT
             echo "✨ Changes detected in manifests"
 
-            # Show which files changed
+            # Show which files changed (filter for manifest files)
             echo "Changed files:"
-            git diff --cached --name-only bin/manifest.*.json | sed 's/^/  - /'
+            git diff --cached --name-only -- bin/ | grep 'manifest\.' | sed 's/^/  - /' || echo "  - (no manifest changes)"
           fi
 
       - name: Commit and push changes
         if: steps.check_changes.outputs.changed == 'true'
         run: |
-          git config --global user.name "GitHub Actions Bot"
-          git config --global user.email "actions@github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           # Files already staged in check step, create commit message
-          CHANGED_FILES=$(git diff --cached --name-only bin/manifest.*.json | xargs -n1 basename)
+          CHANGED_FILES=$(git diff --cached --name-only -- bin/ | grep 'manifest\.' | xargs -n1 basename || echo "")
 
           cat > /tmp/commit-msg.txt <<EOF
           Update manifests from Pantheon
@@ -261,7 +262,7 @@ jobs:
           Synced environments: ${{ github.event.inputs.environments || 'all' }}
 
           Updated files:
-          $(echo "$CHANGED_FILES" | sed 's/^/  - /')
+          $(echo "$CHANGED_FILES" | sed 's/^/  - /' || echo "  - bin/manifest files")
 
           🤖 Auto-synced by GitHub Actions
           EOF
