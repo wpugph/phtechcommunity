@@ -226,7 +226,7 @@ jq -r ".plugins | to_entries[] | \"\(.key)|\(.value.version)|\(.value.status)\""
 
 # Get current plugins from Pantheon dev
 echo "→ Fetching current plugin list from Pantheon dev..."
-terminus wp "$SITE_NAME.dev" -- plugin list --format=json > "$TMP_DIR/plugin_raw.txt" 2>&1
+terminus wp "$SITE_NAME.dev" -- plugin list --format=json 2>/dev/null > "$TMP_DIR/plugin_raw.txt"
 
 # Extract and parse JSON
 if cat "$TMP_DIR/plugin_raw.txt" | jq -e '. | type' >/dev/null 2>&1; then
@@ -246,7 +246,7 @@ fi
 # Fallback to CSV if JSON failed
 if [ ! -s "$TMP_DIR/current_plugins.txt" ]; then
   echo "  ⚠️  No plugins found in dev via JSON format, trying CSV fallback..."
-  terminus wp "$SITE_NAME.dev" -- plugin list --format=csv 2>&1 | tail -n +2 | awk -F',' '{print $1"|"$4"|"$2}' > "$TMP_DIR/current_plugins.txt" || echo "" > "$TMP_DIR/current_plugins.txt"
+  terminus wp "$SITE_NAME.dev" -- plugin list --format=csv 2>/dev/null | tail -n +2 | awk -F',' '{print $1"|"$4"|"$2}' > "$TMP_DIR/current_plugins.txt" || echo "" > "$TMP_DIR/current_plugins.txt"
   if [ ! -s "$TMP_DIR/current_plugins.txt" ]; then
     echo "❌ ERROR: No plugins found in dev!" >&2
     if [ "$DEBUG_MODE" = true ]; then
@@ -342,7 +342,7 @@ done < "$TMP_DIR/current_plugins.txt"
 jq -r ".themes | to_entries[] | \"\(.key)|\(.value.version)\"" "$MANIFEST_FILE" > "$TMP_DIR/manifest_themes.txt" || echo "" > "$TMP_DIR/manifest_themes.txt"
 
 # Get current themes from Pantheon dev
-terminus wp "$SITE_NAME.dev" -- theme list --format=json > "$TMP_DIR/theme_raw.txt" 2>&1
+terminus wp "$SITE_NAME.dev" -- theme list --format=json 2>/dev/null > "$TMP_DIR/theme_raw.txt"
 cat "$TMP_DIR/theme_raw.txt" | jq -r '.[]? | "\(.name)|\(.version)"' > "$TMP_DIR/current_themes.txt" 2>/dev/null || echo "" > "$TMP_DIR/current_themes.txt"
 
 echo "  Themes in manifest: $(wc -l < "$TMP_DIR/manifest_themes.txt" | xargs)"
