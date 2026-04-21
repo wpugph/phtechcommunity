@@ -134,17 +134,19 @@ PHP_VERSION=$(terminus env:info "$SITE_NAME.$ENV" --field=php_version 2>/dev/nul
 # Get plugins (robust JSON extraction)
 PLUGINS_RAW=$(terminus wp "$SITE_NAME.$ENV" -- plugin list --format=json 2>&1)
 
-# Try to extract valid JSON - look for array anywhere in output
-if echo "$PLUGINS_RAW" | jq -e '.' >/dev/null 2>&1; then
-  # Valid JSON found
-  PLUGINS_JSON=$(echo "$PLUGINS_RAW" | jq -c '.')
-elif echo "$PLUGINS_RAW" | grep -q '^\['; then
-  # Found array at start of line
-  PLUGINS_JSON=$(echo "$PLUGINS_RAW" | grep '^[[]' | head -1)
-else
-  # No valid JSON, show error and use empty
+# Extract only lines that look like JSON array (from [ to ])
+# Use awk to extract from first [ to last ]
+PLUGINS_JSON=$(echo "$PLUGINS_RAW" | awk '/^\[/,/^\]/')
+
+# Validate it's actually valid JSON
+set +e
+echo "$PLUGINS_JSON" | jq '.' >/dev/null 2>&1
+JSON_VALID=$?
+set -e
+
+if [ $JSON_VALID -ne 0 ] || [ -z "$PLUGINS_JSON" ]; then
   echo "  ⚠️  Could not parse plugins JSON" >&2
-  echo "  Raw output (first 200 chars): ${PLUGINS_RAW:0:200}" >&2
+  echo "  Raw output (first 300 chars): ${PLUGINS_RAW:0:300}" >&2
   PLUGINS_JSON="[]"
 fi
 
@@ -159,14 +161,19 @@ echo "  Debug: PLUGINS_JSON first 200 chars = ${PLUGINS_JSON:0:200}" >&2
 # Get themes (robust JSON extraction)
 THEMES_RAW=$(terminus wp "$SITE_NAME.$ENV" -- theme list --format=json 2>&1)
 
-# Try to extract valid JSON
-if echo "$THEMES_RAW" | jq -e '.' >/dev/null 2>&1; then
-  THEMES_JSON=$(echo "$THEMES_RAW" | jq -c '.')
-elif echo "$THEMES_RAW" | grep -q '^\['; then
-  THEMES_JSON=$(echo "$THEMES_RAW" | grep '^[[]' | head -1)
-else
+# Extract only lines that look like JSON array (from [ to ])
+# Use awk to extract from first [ to last ]
+THEMES_JSON=$(echo "$THEMES_RAW" | awk '/^\[/,/^\]/')
+
+# Validate it's actually valid JSON
+set +e
+echo "$THEMES_JSON" | jq '.' >/dev/null 2>&1
+JSON_VALID=$?
+set -e
+
+if [ $JSON_VALID -ne 0 ] || [ -z "$THEMES_JSON" ]; then
   echo "  ⚠️  Could not parse themes JSON" >&2
-  echo "  Raw output (first 200 chars): ${THEMES_RAW:0:200}" >&2
+  echo "  Raw output (first 300 chars): ${THEMES_RAW:0:300}" >&2
   THEMES_JSON="[]"
 fi
 
@@ -190,12 +197,13 @@ if [ "$PLUGINS_JSON" = "[]" ] || [ -z "$PLUGINS_JSON" ]; then
 else
   # First validate the JSON is parseable
   set +e
-  echo "$PLUGINS_JSON" | jq '.' >/dev/null 2>&1
+  VALIDATE_OUTPUT=$(echo "$PLUGINS_JSON" | jq '.' 2>&1 >/dev/null)
   VALIDATE_EXIT=$?
   set -e
 
   if [ $VALIDATE_EXIT -ne 0 ]; then
-    echo "  ⚠️  Plugins JSON is invalid, cannot parse" >&2
+    echo "  ⚠️  Plugins JSON is invalid: $VALIDATE_OUTPUT" >&2
+    echo "  Full JSON length: ${#PLUGINS_JSON} chars" >&2
     PLUGINS_OBJ="{}"
   else
     # Try to transform - use simpler transformation without update_version to avoid issues
