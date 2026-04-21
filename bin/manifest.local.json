@@ -20,36 +20,6 @@
       "update": "none",
       "update_version": ""
     },
-    "akismet": {
-      "version": "5.6",
-      "status": "inactive",
-      "update": "none",
-      "update_version": ""
-    },
-    "autoptimize": {
-      "version": "3.1.13",
-      "status": "inactive",
-      "update": "available",
-      "update_version": "3.1.15.1"
-    },
-    "cactus-companion": {
-      "version": "1.0.6",
-      "status": "active",
-      "update": "none",
-      "update_version": ""
-    },
-    "caldera-forms": {
-      "version": "1.9.4",
-      "status": "active",
-      "update": "none",
-      "update_version": ""
-    },
-    "caldera-forms-anti-spam": {
-      "version": "0.1.1",
-      "status": "active",
-      "update": "none",
-      "update_version": ""
-    },
     "elementor": {
       "version": "4.0.3",
       "status": "active",
@@ -64,7 +34,7 @@
     },
     "flying-scripts": {
       "version": "1.2.4",
-      "status": "inactive",
+      "status": "active",
       "update": "none",
       "update_version": ""
     },
@@ -152,6 +122,12 @@
       "update": "none",
       "update_version": ""
     },
+    "super-socializer": {
+      "version": "7.14.5",
+      "status": "active",
+      "update": "none",
+      "update_version": ""
+    },
     "the-events-calendar": {
       "version": "6.15.20",
       "status": "active",
@@ -181,6 +157,12 @@
       "status": "active",
       "update": "none",
       "update_version": ""
+    },
+    "pantheon-waf-setup": {
+      "version": "1.0.0",
+      "status": "must-use",
+      "update": false,
+      "update_version": ""
     }
   },
   "themes": {
@@ -205,8 +187,13 @@
       "update": "none"
     }
   },
-  "mu_plugins": {},
+  "mu_plugins": {
+    "pantheon-waf-setup.php": {
+      "version": "1.0.0",
+      "name": "Pantheon WAF Setup"
+    }
+  },
   "active_theme": "astra",
   "multisite": false,
-  "last_updated": "2026-04-21T01:08:07Z"
+  "last_updated": "2026-04-21T04:51:57Z"
 }

@@ -69,28 +69,28 @@ fi
 
 # Get WordPress version
 echo -e "${YELLOW}→ Reading WordPress core version...${NC}"
-WP_VERSION=$(wp core version 2>/dev/null || echo "unknown")
-DB_VERSION=$(wp core version --extra 2>/dev/null | grep 'Database' | awk '{print $3}' || echo "unknown")
+WP_VERSION=$(wp core version 2>&1 | grep -E '^[0-9]' | head -1 || echo "unknown")
+DB_VERSION=$(wp core version --extra 2>&1 | grep 'Database' | awk '{print $3}' || echo "unknown")
 
 # Get PHP version
-PHP_VERSION=$(php -r "echo PHP_VERSION;" 2>/dev/null || echo "unknown")
+PHP_VERSION=$(php -r "echo PHP_VERSION;" 2>&1 | grep -E '^[0-9]' | head -1 || echo "unknown")
 
 # Get plugins list
 echo -e "${YELLOW}→ Reading plugins...${NC}"
-PLUGINS_JSON=$(wp plugin list --format=json 2>/dev/null || echo "[]")
+PLUGINS_JSON=$(wp plugin list --format=json 2>&1 | grep -E '^\[' || echo "[]")
 
 # Get themes list
 echo -e "${YELLOW}→ Reading themes...${NC}"
-THEMES_JSON=$(wp theme list --format=json 2>/dev/null || echo "[]")
+THEMES_JSON=$(wp theme list --format=json 2>&1 | grep -E '^\[' || echo "[]")
 
 # Get active theme
-ACTIVE_THEME=$(wp theme list --status=active --field=name 2>/dev/null || echo "unknown")
+ACTIVE_THEME=$(wp theme list --status=active --field=name 2>&1 | grep -v '^Warning:' | grep -v '^Failed' | grep -v 'Xdebug' | grep -v 'API version' | grep -v 'These options' | grep -v 'Notice:' | grep -v 'Undefined index' | grep -v 'Module compiled' | grep -v 'PHP    compiled' | grep -v 'in Unknown' | grep -v 'symbol not found' | grep -v 'dlopen' | grep -v '^$' | head -1 || echo "unknown")
 
 # Get MU plugins
-MU_PLUGINS_JSON=$(wp eval 'echo json_encode(get_mu_plugins());' 2>/dev/null || echo "{}")
+MU_PLUGINS_JSON=$(wp eval 'echo json_encode(get_mu_plugins());' 2>&1 | grep -E '^\{' || echo "{}")
 
 # Check if multisite
-IS_MULTISITE=$(wp eval 'echo is_multisite() ? "true" : "false";' 2>/dev/null || echo "false")
+IS_MULTISITE=$(wp eval 'echo is_multisite() ? "true" : "false";' 2>&1 | grep -E '^(true|false)' || echo "false")
 
 # Process JSON data and filter exclusions
 if [ -n "$EXCLUDED_ITEMS" ]; then
