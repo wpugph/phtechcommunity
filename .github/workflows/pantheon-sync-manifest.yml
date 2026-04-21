@@ -148,24 +148,27 @@ jobs:
               fi
               echo "" >&2
               echo "  Returning minimal data for $ENV" >&2
-              # Return minimal valid JSON but don't fail the script
+              # Return minimal valid JSON using jq (no heredoc issues)
               TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-              cat <<ERROREOF
-{
-  "site_name": "$SITE_NAME",
-  "site_id": "$SITE_UUID",
-  "environment": "$ENV",
-  "wordpress": {"version": "unknown", "db_version": "unknown"},
-  "php_version": "unknown",
-  "plugins": {},
-  "themes": {},
-  "mu_plugins": {},
-  "active_theme": "unknown",
-  "multisite": false,
-  "last_updated": "$TIMESTAMP",
-  "error": "WP-CLI connectivity failed"
-}
-ERROREOF
+              jq -n \
+                --arg site_name "$SITE_NAME" \
+                --arg site_id "$SITE_UUID" \
+                --arg env "$ENV" \
+                --arg timestamp "$TIMESTAMP" \
+                '{
+                  "site_name": $site_name,
+                  "site_id": $site_id,
+                  "environment": $env,
+                  "wordpress": {"version": "unknown", "db_version": "unknown"},
+                  "php_version": "unknown",
+                  "plugins": {},
+                  "themes": {},
+                  "mu_plugins": {},
+                  "active_theme": "unknown",
+                  "multisite": false,
+                  "last_updated": $timestamp,
+                  "error": "WP-CLI connectivity failed"
+                }'
               return 0
             fi
             echo "  ✓ WP-CLI connected" >&2
@@ -235,26 +238,35 @@ ERROREOF
               THEMES_OBJ=$(echo "$THEMES_JSON" | jq -c 'map({(.name): {version: .version, status: .status, update: .update}}) | add // {}' 2>/dev/null || echo "{}")
             fi
 
-            # Build JSON (using pre-processed objects)
+            # Build JSON using jq (safer than heredoc)
             TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-            cat <<ENVEOF
-{
-  "site_name": "$SITE_NAME",
-  "site_id": "$SITE_UUID",
-  "environment": "$ENV",
-  "wordpress": {
-    "version": "$WP_VERSION",
-    "db_version": "unknown"
-  },
-  "php_version": "$PHP_VERSION",
-  "plugins": $PLUGINS_OBJ,
-  "themes": $THEMES_OBJ,
-  "mu_plugins": {},
-  "active_theme": "$ACTIVE_THEME",
-  "multisite": $IS_MULTISITE,
-  "last_updated": "$TIMESTAMP"
-}
-ENVEOF
+            jq -n \
+              --arg site_name "$SITE_NAME" \
+              --arg site_id "$SITE_UUID" \
+              --arg env "$ENV" \
+              --arg wp_version "$WP_VERSION" \
+              --arg php_version "$PHP_VERSION" \
+              --argjson plugins "$PLUGINS_OBJ" \
+              --argjson themes "$THEMES_OBJ" \
+              --arg active_theme "$ACTIVE_THEME" \
+              --argjson is_multisite "$IS_MULTISITE" \
+              --arg timestamp "$TIMESTAMP" \
+              '{
+                "site_name": $site_name,
+                "site_id": $site_id,
+                "environment": $env,
+                "wordpress": {
+                  "version": $wp_version,
+                  "db_version": "unknown"
+                },
+                "php_version": $php_version,
+                "plugins": $plugins,
+                "themes": $themes,
+                "mu_plugins": {},
+                "active_theme": $active_theme,
+                "multisite": $is_multisite,
+                "last_updated": $timestamp
+              }'
           }
 
           # Determine which environments to sync
