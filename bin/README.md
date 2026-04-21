@@ -13,6 +13,12 @@ Quick reference for managing Pantheon environments and manifests.
 
 # Install from manifest to local
 ./bin/local-install-from-manifest.sh --source-env=dev
+
+# Deploy custom code to Pantheon
+./bin/deploy-custom-code-to-pantheon.sh --env dev --commit
+
+# Sync Pantheon from manifest (with custom code)
+./bin/sync-pantheon-from-manifest.sh --source-env local --commit
 ```
 
 ## 📋 Scripts
@@ -150,6 +156,106 @@ git commit -m "Update Pantheon manifests: WordPress 6.9.4"
 
 ---
 
+### `deploy-custom-code-to-pantheon.sh`
+**Purpose:** Deploy custom themes, plugins, and MU plugins to Pantheon  
+**Handles:** Git-tracked custom code and symlink resolution
+
+**What it does:**
+- Scans git for tracked custom code in:
+  - `wp-content/themes/` (custom themes like `phcommunity.tech`)
+  - `wp-content/plugins/` (custom plugins)
+  - `wp-content/mu-plugins/` (custom MU plugins, excluding Pantheon defaults)
+- Resolves symlinks by copying actual files (Pantheon doesn't support symlinks)
+- Deploys via `terminus rsync` to Pantheon SFTP
+- Optionally commits changes to Pantheon environment
+
+**When to use:**
+- Before syncing plugins/themes from manifest
+- After updating custom theme code locally
+- When deploying custom plugins to Pantheon
+- Automatically runs in GitHub Actions workflow
+
+**Example:**
+```bash
+# Deploy to dev and commit
+./bin/deploy-custom-code-to-pantheon.sh --env dev --commit
+
+# Deploy to test environment only (no commit)
+./bin/deploy-custom-code-to-pantheon.sh --env test
+
+# Dry run to see what would be deployed
+./bin/deploy-custom-code-to-pantheon.sh --env dev --dry-run
+```
+
+**Options:**
+- `--env ENV` - Target environment (default: dev)
+- `--commit` - Commit changes after deployment
+- `--skip-auth` - Skip Terminus authentication
+- `--dry-run` - Show what would be deployed without doing it
+
+**Environment variables:**
+- `TERMINUS_TOKEN` - Pantheon machine token (required)
+- `PANTHEON_SITE_NAME` - Pantheon site name (required)
+
+---
+
+### `sync-pantheon-from-manifest.sh`
+**Purpose:** Sync Pantheon environment from a manifest file  
+**Input:** `bin/manifest.{env}.json`
+
+**What it does:**
+- Reads manifest file for specified environment
+- Compares with current Pantheon dev state
+- Performs smart sync (only changes what's different):
+  - Installs missing plugins/themes
+  - Updates/downgrades mismatched versions
+  - Activates/deactivates plugins
+  - Removes plugins not in manifest
+  - Updates WordPress core if needed
+  - Activates correct theme
+- Optionally commits changes to Pantheon dev
+- Optionally deploys to test/live environments
+
+**When to use:**
+- Syncing local changes to Pantheon dev
+- Replicating one environment's state to another
+- Automated deployments via GitHub Actions
+- Rolling back to a previous manifest state
+
+**Example:**
+```bash
+# Sync from local manifest to Pantheon dev
+export TERMINUS_TOKEN="your-token"
+export PANTHEON_SITE_NAME="your-site"
+./bin/sync-pantheon-from-manifest.sh --source-env local --commit
+
+# Sync from dev manifest and deploy to test
+./bin/sync-pantheon-from-manifest.sh --source-env dev --commit --deploy-test
+
+# Force reinstall everything from live manifest
+./bin/sync-pantheon-from-manifest.sh --source-env live --force --commit
+
+# Debug mode with verbose output
+./bin/sync-pantheon-from-manifest.sh --source-env dev --debug
+```
+
+**Options:**
+- `--source-env ENV` - Source environment in manifest (dev, test, live, local) [default: dev]
+- `--force` - Force full reinstall (slow, reinstalls everything)
+- `--commit` - Commit changes to Pantheon dev
+- `--deploy-test` - Deploy to test environment after dev
+- `--deploy-live` - Deploy to live environment after test
+- `--debug` - Enable verbose debug output
+- `--skip-ssh-setup` - Skip SSH setup (use if already configured)
+- `--skip-auth` - Skip Terminus authentication
+
+**Environment variables:**
+- `TERMINUS_TOKEN` - Pantheon machine token (required)
+- `PANTHEON_SITE_NAME` - Pantheon site name (required)
+- `PANTHEON_SSH_KEY` - SSH private key (optional, if not already configured)
+
+---
+
 ## 📁 Manifest Files Structure
 
 **New per-environment structure:**
@@ -221,6 +327,20 @@ git commit -m "Add: WooCommerce 7.5.0"
 
 ### Syncing Local to Pantheon Dev
 ```bash
+# Option 1: Manual via script
+export TERMINUS_TOKEN="your-token"
+export PANTHEON_SITE_NAME="your-site"
+
+# 1. Deploy custom code first
+./bin/deploy-custom-code-to-pantheon.sh --env dev --commit
+
+# 2. Save local state to manifest
+./bin/save-local-to-manifest.sh
+
+# 3. Sync from local manifest to Pantheon
+./bin/sync-pantheon-from-manifest.sh --source-env local --commit
+
+# Option 2: Via GitHub Actions
 # 1. Save local state
 ./bin/save-local-to-manifest.sh
 
@@ -233,6 +353,7 @@ git push
 #    "Sync Pantheon from Manifest"
 #    - source_env: local
 #    - commit_changes: true
+#    (This automatically deploys custom code first)
 ```
 
 ### Syncing Pantheon to Local
@@ -271,6 +392,20 @@ echo "jetpack-backup" >> bin/manifest-exclude.txt
 # - Captured in manifests
 # - Installed/updated during sync
 # - Removed during cleanup
+```
+
+### Deploying Custom Themes/Plugins
+```bash
+# Custom code is tracked in git and excluded from manifests
+# Custom theme: wp-content/themes/phcommunity.tech/
+
+# 1. Update custom theme files locally
+# 2. Deploy to Pantheon
+./bin/deploy-custom-code-to-pantheon.sh --env dev --commit
+
+# For symlinks (e.g., during development)
+# The script automatically resolves symlinks and copies actual files
+# Pantheon doesn't support symlinks, so this ensures compatibility
 ```
 
 ---
