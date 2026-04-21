@@ -149,7 +149,7 @@ else
 fi
 
 # Debug: show plugin count
-PLUGIN_COUNT=$(echo "$PLUGINS_JSON" | jq -e 'length' 2>/dev/null || echo "0")
+PLUGIN_COUNT=$(echo "$PLUGINS_JSON" | jq 'length' 2>/dev/null || echo "0")
 echo "  Plugins found: $PLUGIN_COUNT" >&2
 
 # Get themes (robust JSON extraction)
@@ -167,7 +167,7 @@ else
 fi
 
 # Debug: show theme count
-THEME_COUNT=$(echo "$THEMES_JSON" | jq -e 'length' 2>/dev/null || echo "0")
+THEME_COUNT=$(echo "$THEMES_JSON" | jq 'length' 2>/dev/null || echo "0")
 echo "  Themes found: $THEME_COUNT" >&2
 
 # Get active theme
