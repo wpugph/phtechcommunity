@@ -134,9 +134,15 @@ PHP_VERSION=$(terminus env:info "$SITE_NAME.$ENV" --field=php_version 2>/dev/nul
 # Get plugins (robust JSON extraction)
 PLUGINS_RAW=$(terminus wp "$SITE_NAME.$ENV" -- plugin list --format=json 2>&1)
 
-# Extract JSON - filter out warnings and notices, keep only lines that are part of JSON array
-# Remove SSH warnings, terminus notices, and empty lines
-PLUGINS_JSON=$(echo "$PLUGINS_RAW" | grep -v "^Warning:" | grep -v "^\[notice\]" | grep -v "^Command:" | grep -v "^$" | tr -d '\n')
+# Extract JSON by finding the first [ and taking everything from there
+# This handles multi-line output and warnings before the JSON
+PLUGINS_JSON=$(echo "$PLUGINS_RAW" | grep -o '\[.*' | head -1)
+
+# If grep didn't find anything starting with [, try to extract from the whole output
+if [ -z "$PLUGINS_JSON" ]; then
+  # Try another approach - use awk to print from first [ to end
+  PLUGINS_JSON=$(echo "$PLUGINS_RAW" | awk '/\[/{f=1} f')
+fi
 
 # Validate it's actually valid JSON
 set +e
@@ -147,6 +153,7 @@ set -e
 if [ $JSON_VALID -ne 0 ] || [ -z "$PLUGINS_JSON" ]; then
   echo "  ⚠️  Could not parse plugins JSON" >&2
   echo "  Raw output (first 300 chars): ${PLUGINS_RAW:0:300}" >&2
+  echo "  Extracted (first 200 chars): ${PLUGINS_JSON:0:200}" >&2
   PLUGINS_JSON="[]"
 fi
 
@@ -161,9 +168,15 @@ echo "  Debug: PLUGINS_JSON first 200 chars = ${PLUGINS_JSON:0:200}" >&2
 # Get themes (robust JSON extraction)
 THEMES_RAW=$(terminus wp "$SITE_NAME.$ENV" -- theme list --format=json 2>&1)
 
-# Extract JSON - filter out warnings and notices, keep only lines that are part of JSON array
-# Remove SSH warnings, terminus notices, and empty lines
-THEMES_JSON=$(echo "$THEMES_RAW" | grep -v "^Warning:" | grep -v "^\[notice\]" | grep -v "^Command:" | grep -v "^$" | tr -d '\n')
+# Extract JSON by finding the first [ and taking everything from there
+# This handles multi-line output and warnings before the JSON
+THEMES_JSON=$(echo "$THEMES_RAW" | grep -o '\[.*' | head -1)
+
+# If grep didn't find anything starting with [, try to extract from the whole output
+if [ -z "$THEMES_JSON" ]; then
+  # Try another approach - use awk to print from first [ to end
+  THEMES_JSON=$(echo "$THEMES_RAW" | awk '/\[/{f=1} f')
+fi
 
 # Validate it's actually valid JSON
 set +e
@@ -174,6 +187,7 @@ set -e
 if [ $JSON_VALID -ne 0 ] || [ -z "$THEMES_JSON" ]; then
   echo "  ⚠️  Could not parse themes JSON" >&2
   echo "  Raw output (first 300 chars): ${THEMES_RAW:0:300}" >&2
+  echo "  Extracted (first 200 chars): ${THEMES_JSON:0:200}" >&2
   THEMES_JSON="[]"
 fi
 
