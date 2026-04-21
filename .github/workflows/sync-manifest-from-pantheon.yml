@@ -72,6 +72,17 @@ jobs:
             terminus env:wake "$SITE_NAME.$ENV" &> /dev/null || true
             sleep 3
 
+            # Check connection mode and switch to SFTP if needed (WP-CLI requires SFTP mode)
+            echo "  Checking connection mode..." >&2
+            CONN_MODE=$(terminus connection:info "$SITE_NAME.$ENV" --field=mode 2>/dev/null || echo "unknown")
+            echo "  Current mode: $CONN_MODE" >&2
+
+            if [ "$CONN_MODE" = "git" ]; then
+              echo "  Switching to SFTP mode (required for WP-CLI)..." >&2
+              terminus connection:set "$SITE_NAME.$ENV" sftp &> /dev/null || true
+              sleep 2
+            fi
+
             # Test WP-CLI connectivity
             echo "  Testing WP-CLI..." >&2
             if ! terminus wp "$SITE_NAME.$ENV" -- core version --quiet 2>/dev/null; then
