@@ -55,6 +55,10 @@ elif [ "$CONN_MODE" = "unknown" ] || echo "$CONN_MODE" | grep -qi "requested"; t
   sleep 3
 fi
 
+# Pre-add SSH host to known_hosts to eliminate "Permanently added" warnings
+echo "  Adding SSH host to known_hosts..." >&2
+ssh-keyscan -t rsa -p 2222 "appserver.$ENV.$SITE_UUID.drush.in" >> ~/.ssh/known_hosts 2>/dev/null || true
+
 # Test WP-CLI connectivity with retry
 echo "  Testing WP-CLI connectivity..." >&2
 echo "  Command: terminus wp $SITE_NAME.$ENV -- core version" >&2
@@ -134,15 +138,9 @@ PHP_VERSION=$(terminus env:info "$SITE_NAME.$ENV" --field=php_version 2>/dev/nul
 # Get plugins (robust JSON extraction)
 PLUGINS_RAW=$(terminus wp "$SITE_NAME.$ENV" -- plugin list --format=json 2>&1)
 
-# Extract JSON by finding the first [ and taking everything from there
-# This handles multi-line output and warnings before the JSON
-PLUGINS_JSON=$(echo "$PLUGINS_RAW" | grep -o '\[.*' | head -1)
-
-# If grep didn't find anything starting with [, try to extract from the whole output
-if [ -z "$PLUGINS_JSON" ]; then
-  # Try another approach - use awk to print from first [ to end
-  PLUGINS_JSON=$(echo "$PLUGINS_RAW" | awk '/\[/{f=1} f')
-fi
+# Extract JSON by finding the first [{ (JSON array of objects)
+# Now that SSH warnings are suppressed, this should work cleanly
+PLUGINS_JSON=$(echo "$PLUGINS_RAW" | grep -o '\[\{.*' | head -1)
 
 # Validate it's actually valid JSON
 set +e
@@ -153,7 +151,6 @@ set -e
 if [ $JSON_VALID -ne 0 ] || [ -z "$PLUGINS_JSON" ]; then
   echo "  ⚠️  Could not parse plugins JSON" >&2
   echo "  Raw output (first 300 chars): ${PLUGINS_RAW:0:300}" >&2
-  echo "  Extracted (first 200 chars): ${PLUGINS_JSON:0:200}" >&2
   PLUGINS_JSON="[]"
 fi
 
@@ -168,15 +165,9 @@ echo "  Debug: PLUGINS_JSON first 200 chars = ${PLUGINS_JSON:0:200}" >&2
 # Get themes (robust JSON extraction)
 THEMES_RAW=$(terminus wp "$SITE_NAME.$ENV" -- theme list --format=json 2>&1)
 
-# Extract JSON by finding the first [ and taking everything from there
-# This handles multi-line output and warnings before the JSON
-THEMES_JSON=$(echo "$THEMES_RAW" | grep -o '\[.*' | head -1)
-
-# If grep didn't find anything starting with [, try to extract from the whole output
-if [ -z "$THEMES_JSON" ]; then
-  # Try another approach - use awk to print from first [ to end
-  THEMES_JSON=$(echo "$THEMES_RAW" | awk '/\[/{f=1} f')
-fi
+# Extract JSON by finding the first [{ (JSON array of objects)
+# Now that SSH warnings are suppressed, this should work cleanly
+THEMES_JSON=$(echo "$THEMES_RAW" | grep -o '\[\{.*' | head -1)
 
 # Validate it's actually valid JSON
 set +e
@@ -187,7 +178,6 @@ set -e
 if [ $JSON_VALID -ne 0 ] || [ -z "$THEMES_JSON" ]; then
   echo "  ⚠️  Could not parse themes JSON" >&2
   echo "  Raw output (first 300 chars): ${THEMES_RAW:0:300}" >&2
-  echo "  Extracted (first 200 chars): ${THEMES_JSON:0:200}" >&2
   THEMES_JSON="[]"
 fi
 
