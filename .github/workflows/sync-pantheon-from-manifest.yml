@@ -76,6 +76,20 @@ jobs:
           # Install jq (fast, no need to cache)
           sudo apt-get update -qq && sudo apt-get install -y -qq jq >/dev/null 2>&1
 
+      - name: Deploy custom code to Pantheon
+        env:
+          TERMINUS_TOKEN: ${{ secrets.PANTHEON_MACHINE_TOKEN }}
+          PANTHEON_SITE_NAME: ${{ secrets.PANTHEON_SITE_NAME }}
+          PANTHEON_SSH_KEY: ${{ secrets.PANTHEON_SSH_PRIVATE_KEY }}
+        run: |
+          echo "Deploying custom themes, plugins, and symlinks to Pantheon dev..."
+
+          # Deploy custom code (themes, plugins, MU plugins) including resolving symlinks
+          ./bin/deploy-custom-code-to-pantheon.sh \
+            --env dev \
+            --commit \
+            --skip-auth
+
       - name: Run sync script
         env:
           TERMINUS_TOKEN: ${{ secrets.PANTHEON_MACHINE_TOKEN }}
@@ -83,7 +97,7 @@ jobs:
           PANTHEON_SSH_KEY: ${{ secrets.PANTHEON_SSH_PRIVATE_KEY }}
         run: |
           # Build options from workflow inputs
-          OPTIONS=""
+          OPTIONS="--skip-auth"  # Already authenticated in previous step
           [ "${{ github.event.inputs.source_env }}" != "dev" ] && OPTIONS="$OPTIONS --source-env ${{ github.event.inputs.source_env }}"
           [ "${{ github.event.inputs.force_reinstall }}" = "true" ] && OPTIONS="$OPTIONS --force"
           [ "${{ github.event.inputs.commit_changes }}" = "true" ] && OPTIONS="$OPTIONS --commit"
