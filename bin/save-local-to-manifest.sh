@@ -67,6 +67,18 @@ else
     EXCLUDED_ITEMS=""
 fi
 
+# Get site information from WordPress
+echo -e "${YELLOW}→ Reading site information...${NC}"
+SITE_URL=$(wp option get siteurl 2>&1 | grep -v '^Warning:' | grep -v '^Failed' | grep -v 'Xdebug' | tail -1 || echo "http://local")
+# Extract domain from URL (e.g., http://phtech1.local -> phtech1)
+SITE_DOMAIN=$(echo "$SITE_URL" | sed -E 's|https?://||' | sed 's|/.*||' | sed 's|\.local$||' | sed 's|\..*||')
+SITE_NAME="${SITE_DOMAIN:-local}"
+SITE_ID="${SITE_NAME}-${TARGET_ENV}"
+
+echo -e "  Site URL: ${SITE_URL}"
+echo -e "  Site Name: ${SITE_NAME}"
+echo -e "  Site ID: ${SITE_ID}"
+
 # Get WordPress version
 echo -e "${YELLOW}→ Reading WordPress core version...${NC}"
 WP_VERSION=$(wp core version 2>&1 | grep -E '^[0-9]' | head -1 || echo "unknown")
@@ -105,8 +117,8 @@ MU_PLUGINS_OBJ=$(echo "$MU_PLUGINS_JSON" | jq 'to_entries | map({(.key): {versio
 
 # Build environment data
 ENV_DATA=$(jq -n \
-    --arg site_name "local" \
-    --arg site_id "local-dev" \
+    --arg site_name "$SITE_NAME" \
+    --arg site_id "$SITE_ID" \
     --arg environment "$TARGET_ENV" \
     --arg wp_version "$WP_VERSION" \
     --arg db_version "$DB_VERSION" \
@@ -147,6 +159,8 @@ echo -e "${GREEN}║  ✓ Local state saved to manifest!          ║${NC}"
 echo -e "${GREEN}╚════════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "${BLUE}Summary:${NC}"
+echo -e "  Site: ${SITE_NAME}"
+echo -e "  Site ID: ${SITE_ID}"
 echo -e "  Environment: ${TARGET_ENV}"
 echo -e "  WordPress: ${WP_VERSION}"
 echo -e "  PHP: ${PHP_VERSION}"

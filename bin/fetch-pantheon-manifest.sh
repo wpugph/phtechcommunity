@@ -131,20 +131,9 @@ WP_VERSION=$(terminus wp "$SITE_NAME.$ENV" -- core version 2>&1 | grep -oE "^[0-
 # Get PHP version
 PHP_VERSION=$(terminus env:info "$SITE_NAME.$ENV" --field=php_version 2>/dev/null || echo "unknown")
 
-# Get plugins (robust JSON extraction)
-PLUGINS_RAW=$(terminus wp "$SITE_NAME.$ENV" -- plugin list --format=json 2>&1)
-
-# Extract ONLY the JSON array using parameter expansion
-# Remove everything before [{ and everything after }]
-TEMP="${PLUGINS_RAW#*\[{}"  # Remove everything before [{
-PLUGINS_JSON="[{${TEMP%\]*}"  # Prepend [{ and remove everything after the last ]
-
-# If extraction failed, set to empty array
-if [ -z "$PLUGINS_JSON" ] || [[ ! "$PLUGINS_JSON" =~ ^\[ ]]; then
-  echo "  ⚠️  Could not extract plugins JSON array" >&2
-  echo "  Raw output (first 300 chars): ${PLUGINS_RAW:0:300}" >&2
-  PLUGINS_JSON="[]"
-fi
+# Get plugins - redirect stderr to eliminate SSH warnings
+# This gives us clean JSON output
+PLUGINS_JSON=$(terminus wp "$SITE_NAME.$ENV" -- plugin list --format=json 2>/dev/null)
 
 # Validate it's actually valid JSON
 set +e
@@ -152,9 +141,8 @@ echo "$PLUGINS_JSON" | jq '.' >/dev/null 2>&1
 JSON_VALID=$?
 set -e
 
-if [ $JSON_VALID -ne 0 ]; then
-  echo "  ⚠️  Extracted JSON is invalid" >&2
-  echo "  Extracted (first 200 chars): ${PLUGINS_JSON:0:200}" >&2
+if [ $JSON_VALID -ne 0 ] || [ -z "$PLUGINS_JSON" ]; then
+  echo "  ⚠️  Could not get valid plugins JSON" >&2
   PLUGINS_JSON="[]"
 fi
 
@@ -166,20 +154,9 @@ fi
 echo "  Plugins found: $PLUGIN_COUNT" >&2
 echo "  Debug: PLUGINS_JSON first 200 chars = ${PLUGINS_JSON:0:200}" >&2
 
-# Get themes (robust JSON extraction)
-THEMES_RAW=$(terminus wp "$SITE_NAME.$ENV" -- theme list --format=json 2>&1)
-
-# Extract ONLY the JSON array using parameter expansion
-# Remove everything before [{ and everything after }]
-TEMP="${THEMES_RAW#*\[{}"  # Remove everything before [{
-THEMES_JSON="[{${TEMP%\]*}"  # Prepend [{ and remove everything after the last ]
-
-# If extraction failed, set to empty array
-if [ -z "$THEMES_JSON" ] || [[ ! "$THEMES_JSON" =~ ^\[ ]]; then
-  echo "  ⚠️  Could not extract themes JSON array" >&2
-  echo "  Raw output (first 300 chars): ${THEMES_RAW:0:300}" >&2
-  THEMES_JSON="[]"
-fi
+# Get themes - redirect stderr to eliminate SSH warnings
+# This gives us clean JSON output
+THEMES_JSON=$(terminus wp "$SITE_NAME.$ENV" -- theme list --format=json 2>/dev/null)
 
 # Validate it's actually valid JSON
 set +e
@@ -187,9 +164,8 @@ echo "$THEMES_JSON" | jq '.' >/dev/null 2>&1
 JSON_VALID=$?
 set -e
 
-if [ $JSON_VALID -ne 0 ]; then
-  echo "  ⚠️  Extracted JSON is invalid" >&2
-  echo "  Extracted (first 200 chars): ${THEMES_JSON:0:200}" >&2
+if [ $JSON_VALID -ne 0 ] || [ -z "$THEMES_JSON" ]; then
+  echo "  ⚠️  Could not get valid themes JSON" >&2
   THEMES_JSON="[]"
 fi
 

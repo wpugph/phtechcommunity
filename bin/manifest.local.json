@@ -1,12 +1,12 @@
 {
-  "site_name": "local",
-  "site_id": "local-dev",
+  "site_name": "phtech1",
+  "site_id": "phtech1-local",
   "environment": "local",
   "wordpress": {
     "version": "6.9.4",
     "db_version": "60717"
   },
-  "php_version": "8.5.3",
+  "php_version": "7.4.30",
   "plugins": {
     "advanced-access-manager": {
       "version": "7.1.0",
@@ -195,5 +195,5 @@
   },
   "active_theme": "astra",
   "multisite": false,
-  "last_updated": "2026-04-21T05:12:53Z"
+  "last_updated": "2026-04-21T06:18:12Z"
 }
