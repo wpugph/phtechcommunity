@@ -180,9 +180,9 @@ IS_MULTISITE=$(terminus wp "$SITE_NAME.$ENV" -- eval 'echo is_multisite() ? "tru
 if [ "$PLUGINS_JSON" = "[]" ] || [ -z "$PLUGINS_JSON" ]; then
   PLUGINS_OBJ="{}"
 else
-  PLUGINS_OBJ=$(echo "$PLUGINS_JSON" | jq -c 'map({(.name): {version: .version, status: .status, update: .update, update_version: .update_version}}) | add // {}' 2>&1) || PLUGINS_OBJ="{}"
-  # Validate it's valid JSON, otherwise use empty object
-  if ! echo "$PLUGINS_OBJ" | jq -e '.' >/dev/null 2>&1 || [ "$PLUGINS_OBJ" = "null" ] || [ "$PLUGINS_OBJ" = "0" ]; then
+  PLUGINS_OBJ=$(echo "$PLUGINS_JSON" | jq -c 'map({(.name): {version: .version, status: .status, update: .update, update_version: .update_version}}) | add // {}' 2>/dev/null)
+  if [ $? -ne 0 ] || [ -z "$PLUGINS_OBJ" ] || [ "$PLUGINS_OBJ" = "null" ] || ! echo "$PLUGINS_OBJ" | jq -e '.' >/dev/null 2>&1; then
+    echo "  ⚠️  Could not process plugins to object format, using empty" >&2
     PLUGINS_OBJ="{}"
   fi
 fi
@@ -191,12 +191,18 @@ fi
 if [ "$THEMES_JSON" = "[]" ] || [ -z "$THEMES_JSON" ]; then
   THEMES_OBJ="{}"
 else
-  THEMES_OBJ=$(echo "$THEMES_JSON" | jq -c 'map({(.name): {version: .version, status: .status, update: .update}}) | add // {}' 2>&1) || THEMES_OBJ="{}"
-  # Validate it's valid JSON, otherwise use empty object
-  if ! echo "$THEMES_OBJ" | jq -e '.' >/dev/null 2>&1 || [ "$THEMES_OBJ" = "null" ] || [ "$THEMES_OBJ" = "0" ]; then
+  THEMES_OBJ=$(echo "$THEMES_JSON" | jq -c 'map({(.name): {version: .version, status: .status, update: .update}}) | add // {}' 2>/dev/null)
+  if [ $? -ne 0 ] || [ -z "$THEMES_OBJ" ] || [ "$THEMES_OBJ" = "null" ] || ! echo "$THEMES_OBJ" | jq -e '.' >/dev/null 2>&1; then
+    echo "  ⚠️  Could not process themes to object format, using empty" >&2
     THEMES_OBJ="{}"
   fi
 fi
+
+# Debug: show what we're passing
+echo "  Debug: PLUGINS_OBJ length = ${#PLUGINS_OBJ} chars" >&2
+echo "  Debug: THEMES_OBJ length = ${#THEMES_OBJ} chars" >&2
+echo "  Debug: PLUGINS_OBJ first 100 chars = ${PLUGINS_OBJ:0:100}" >&2
+echo "  Debug: THEMES_OBJ first 100 chars = ${THEMES_OBJ:0:100}" >&2
 
 # Build JSON using reusable script
 "$SCRIPT_DIR/generate-manifest-json.sh" "$SITE_NAME" "$SITE_UUID" "$ENV" "$WP_VERSION" "$PHP_VERSION" "$PLUGINS_OBJ" "$THEMES_OBJ" "$ACTIVE_THEME" "$IS_MULTISITE"
