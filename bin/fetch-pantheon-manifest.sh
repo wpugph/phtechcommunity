@@ -134,9 +134,9 @@ PHP_VERSION=$(terminus env:info "$SITE_NAME.$ENV" --field=php_version 2>/dev/nul
 # Get plugins (robust JSON extraction)
 PLUGINS_RAW=$(terminus wp "$SITE_NAME.$ENV" -- plugin list --format=json 2>&1)
 
-# Extract JSON array - find everything from first [ to last ]
-# Use sed to extract from first [ to end, then validate
-PLUGINS_JSON=$(echo "$PLUGINS_RAW" | sed -n 's/.*\(\[.*\]\).*/\1/p')
+# Extract JSON - filter out warnings and notices, keep only lines that are part of JSON array
+# Remove SSH warnings, terminus notices, and empty lines
+PLUGINS_JSON=$(echo "$PLUGINS_RAW" | grep -v "^Warning:" | grep -v "^\[notice\]" | grep -v "^Command:" | grep -v "^$" | tr -d '\n')
 
 # Validate it's actually valid JSON
 set +e
@@ -161,9 +161,9 @@ echo "  Debug: PLUGINS_JSON first 200 chars = ${PLUGINS_JSON:0:200}" >&2
 # Get themes (robust JSON extraction)
 THEMES_RAW=$(terminus wp "$SITE_NAME.$ENV" -- theme list --format=json 2>&1)
 
-# Extract JSON array - find everything from first [ to last ]
-# Use sed to extract from first [ to end, then validate
-THEMES_JSON=$(echo "$THEMES_RAW" | sed -n 's/.*\(\[.*\]\).*/\1/p')
+# Extract JSON - filter out warnings and notices, keep only lines that are part of JSON array
+# Remove SSH warnings, terminus notices, and empty lines
+THEMES_JSON=$(echo "$THEMES_RAW" | grep -v "^Warning:" | grep -v "^\[notice\]" | grep -v "^Command:" | grep -v "^$" | tr -d '\n')
 
 # Validate it's actually valid JSON
 set +e
