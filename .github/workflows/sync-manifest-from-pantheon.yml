@@ -69,8 +69,8 @@ jobs:
 
             # Wake environment
             echo "  Waking environment..." >&2
-            terminus env:wake "$SITE_NAME.$ENV" &> /dev/null || true
-            sleep 3
+            terminus env:wake "$SITE_NAME.$ENV" 2>&1 | head -1
+            sleep 5
 
             # Check connection mode and switch to SFTP if needed (WP-CLI requires SFTP mode)
             echo "  Checking connection mode..." >&2
@@ -79,13 +79,26 @@ jobs:
 
             if [ "$CONN_MODE" = "git" ]; then
               echo "  Switching to SFTP mode (required for WP-CLI)..." >&2
-              terminus connection:set "$SITE_NAME.$ENV" sftp &> /dev/null || true
-              sleep 2
+              terminus connection:set "$SITE_NAME.$ENV" sftp 2>&1 | head -1
+              sleep 3
             fi
 
-            # Test WP-CLI connectivity
-            echo "  Testing WP-CLI..." >&2
-            if ! terminus wp "$SITE_NAME.$ENV" -- core version --quiet 2>/dev/null; then
+            # Test WP-CLI connectivity with retry
+            echo "  Testing WP-CLI connectivity..." >&2
+            WP_CLI_READY=false
+            for i in {1..3}; do
+              echo "    Attempt $i/3..." >&2
+              if terminus wp "$SITE_NAME.$ENV" -- core version --quiet 2>/dev/null; then
+                WP_CLI_READY=true
+                break
+              fi
+              if [ $i -lt 3 ]; then
+                echo "    Failed, waiting 5s..." >&2
+                sleep 5
+              fi
+            done
+
+            if [ "$WP_CLI_READY" = "false" ]; then
               echo "  ❌ ERROR: Cannot connect to WordPress via WP-CLI" >&2
               echo "  Returning minimal data for $ENV" >&2
               # Return minimal valid JSON but don't fail the script
