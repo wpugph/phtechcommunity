@@ -6,11 +6,12 @@
     "version": "unknown",
     "db_version": "unknown"
   },
-  "php_version": "7.4",
+  "php_version": "unknown",
   "plugins": {},
   "themes": {},
   "mu_plugins": {},
-  "active_theme": "",
+  "active_theme": "unknown",
   "multisite": false,
-  "last_updated": "2026-04-21T01:20:28Z"
+  "last_updated": "2026-04-21T01:55:10Z",
+  "error": "WP-CLI connectivity failed"
 }
