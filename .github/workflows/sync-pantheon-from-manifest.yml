@@ -33,6 +33,11 @@ on:
         required: false
         type: boolean
         default: false
+      debug_mode:
+        description: 'Enable verbose debug output'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   sync-pantheon:
@@ -44,16 +49,33 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
+          # Optimize: don't fetch tags/history
+          sparse-checkout: |
+            bin/
+            .github/
+
+      - name: Cache Terminus
+        id: cache-terminus
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/bin/terminus
+          key: terminus-3.5.0
 
       - name: Install dependencies
         run: |
-          # Install Terminus
-          mkdir -p $HOME/.terminus
-          curl -L https://github.com/pantheon-systems/terminus/releases/download/3.5.0/terminus.phar -o /usr/local/bin/terminus
-          chmod +x /usr/local/bin/terminus
+          # Install Terminus (use cached if available)
+          if [ ! -f /usr/local/bin/terminus ]; then
+            echo "Installing Terminus..."
+            mkdir -p $HOME/.terminus
+            curl -L https://github.com/pantheon-systems/terminus/releases/download/3.5.0/terminus.phar -o /usr/local/bin/terminus
+            chmod +x /usr/local/bin/terminus
+          else
+            echo "Using cached Terminus"
+            chmod +x /usr/local/bin/terminus
+          fi
 
-          # Install jq
-          sudo apt-get update && sudo apt-get install -y jq
+          # Install jq (fast, no need to cache)
+          sudo apt-get update -qq && sudo apt-get install -y -qq jq >/dev/null 2>&1
 
       - name: Authenticate with Pantheon
         env:
@@ -138,16 +160,16 @@ jobs:
           echo "## 🔍 Comparing Pantheon dev with manifest ($SOURCE_ENV)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Wake dev environment
+          # Wake dev environment (non-blocking)
           echo "Waking dev environment..."
           terminus env:wake "$SITE_NAME.dev" || true
 
-          # Wait a moment for environment to be ready
-          sleep 5
+          # Reduced wait time - terminus commands auto-wait internally
+          sleep 2
 
           # Test WP-CLI connectivity
           echo "Testing WP-CLI connection..."
-          if ! terminus wp "$SITE_NAME.dev" -- core version; then
+          if ! terminus wp "$SITE_NAME.dev" -- core version --quiet 2>/dev/null; then
             echo "❌ ERROR: Cannot connect to WordPress via WP-CLI"
             echo "This usually means:"
             echo "  - Environment is not in SFTP mode"
@@ -155,23 +177,22 @@ jobs:
             echo "  - WordPress is not installed"
             exit 1
           fi
+          echo "✓ WP-CLI connection successful"
 
           # Get target versions from manifest
           MANIFEST_FILE="${{ steps.load_manifest.outputs.manifest_file }}"
           WP_TARGET=$(jq -r ".wordpress.version // \"unknown\"" "$MANIFEST_FILE")
           THEME_TARGET=$(jq -r ".active_theme // \"unknown\"" "$MANIFEST_FILE")
 
-          # Get current WordPress version
-          terminus wp "$SITE_NAME.dev" -- core version > /tmp/wp_version.txt 2>&1
-          WP_CURRENT=$(cat /tmp/wp_version.txt | grep -oE "^[0-9]+\.[0-9]+(\.[0-9]+)?" | head -1 || echo "unknown")
+          # Get current WordPress version and active theme in one go (optimized)
+          WP_CURRENT=$(terminus wp "$SITE_NAME.dev" -- core version 2>/dev/null | grep -oE "^[0-9]+\.[0-9]+(\.[0-9]+)?" | head -1 || echo "unknown")
+          THEME_CURRENT=$(terminus wp "$SITE_NAME.dev" -- theme list --status=active --field=name 2>/dev/null | grep -v "^\[" | grep -v "^Command:" | head -1 || echo "unknown")
 
-          # Get current active theme
-          terminus wp "$SITE_NAME.dev" -- theme list --status=active --field=name > /tmp/active_theme.txt 2>&1
-          THEME_CURRENT=$(cat /tmp/active_theme.txt | grep -v "^\[" | grep -v "^Command:" | grep -v "^Notice:" | grep -v "^Warning:" | head -1 || echo "unknown")
-
-          # Debug output
-          echo "WordPress - Target: $WP_TARGET, Current: $WP_CURRENT"
-          echo "Theme - Target: $THEME_TARGET, Current: $THEME_CURRENT"
+          # Conditional debug output
+          if [ "${{ github.event.inputs.debug_mode }}" = "true" ]; then
+            echo "DEBUG: WordPress - Target: $WP_TARGET, Current: $WP_CURRENT"
+            echo "DEBUG: Theme - Target: $THEME_TARGET, Current: $THEME_CURRENT"
+          fi
 
           echo "wp_target=$WP_TARGET" >> $GITHUB_OUTPUT
           echo "wp_current=$WP_CURRENT" >> $GITHUB_OUTPUT
@@ -201,31 +222,38 @@ jobs:
             echo "" > /tmp/current_plugins.txt
           fi
 
-          # Debug: show what we got
-          echo ""
-          echo "=== DEBUG: Plugin Comparison ==="
-          echo "Plugins in manifest ($SOURCE_ENV): $(wc -l < /tmp/manifest_plugins.txt | xargs)"
-          echo "Plugins currently in dev: $(wc -l < /tmp/current_plugins.txt | xargs)"
-          echo ""
-
-          if [ ! -s /tmp/current_plugins.txt ]; then
-            echo "❌ ERROR: No plugins found in dev!"
-            echo "Raw terminus output:"
-            cat /tmp/plugin_raw.txt
+          # Conditional debug output
+          if [ "${{ github.event.inputs.debug_mode }}" = "true" ]; then
             echo ""
-            echo "Trying alternative method..."
-            # Try CSV format as fallback
-            terminus wp "$SITE_NAME.dev" -- plugin list --format=csv 2>&1 | tail -n +2 | awk -F',' '{print $1"|"$4"|"$2}' > /tmp/current_plugins.txt || echo "" > /tmp/current_plugins.txt
-            echo "Plugins after CSV parse: $(wc -l < /tmp/current_plugins.txt | xargs)"
+            echo "=== DEBUG: Plugin Comparison ==="
+            echo "Plugins in manifest ($SOURCE_ENV): $(wc -l < /tmp/manifest_plugins.txt | xargs)"
+            echo "Plugins currently in dev: $(wc -l < /tmp/current_plugins.txt | xargs)"
+            echo ""
           fi
 
-          echo "First 5 manifest plugins:"
-          head -5 /tmp/manifest_plugins.txt || echo "  (none)"
-          echo ""
-          echo "First 5 current plugins:"
-          head -5 /tmp/current_plugins.txt || echo "  (none)"
-          echo "================================"
-          echo ""
+          if [ ! -s /tmp/current_plugins.txt ]; then
+            echo "⚠️ No plugins found in dev via JSON format, trying CSV fallback..."
+            # Try CSV format as fallback
+            terminus wp "$SITE_NAME.dev" -- plugin list --format=csv 2>&1 | tail -n +2 | awk -F',' '{print $1"|"$4"|"$2}' > /tmp/current_plugins.txt || echo "" > /tmp/current_plugins.txt
+            if [ ! -s /tmp/current_plugins.txt ]; then
+              echo "❌ ERROR: No plugins found in dev!"
+              if [ "${{ github.event.inputs.debug_mode }}" = "true" ]; then
+                echo "Raw terminus output:"
+                cat /tmp/plugin_raw.txt
+              fi
+              exit 1
+            fi
+          fi
+
+          if [ "${{ github.event.inputs.debug_mode }}" = "true" ]; then
+            echo "First 5 manifest plugins:"
+            head -5 /tmp/manifest_plugins.txt || echo "  (none)"
+            echo ""
+            echo "First 5 current plugins:"
+            head -5 /tmp/current_plugins.txt || echo "  (none)"
+            echo "================================"
+            echo ""
+          fi
 
           # Compare and build action lists
           > /tmp/plugins_to_install.txt
@@ -497,69 +525,66 @@ jobs:
         run: |
           echo "Installing ${{ steps.compare.outputs.plugins_install_count }} plugins..."
           > /tmp/plugins_installed.txt
+          COUNTER=0
+          TOTAL=${{ steps.compare.outputs.plugins_install_count }}
           while IFS='|' read -r slug version status; do
             [ -z "$slug" ] && continue
-            echo "  Installing ${slug} ${version}..."
+            COUNTER=$((COUNTER + 1))
+            echo "[$COUNTER/$TOTAL] Installing $slug $version..."
 
-            # Use --force to ensure it installs even if already present
-            # Redirect stdin to prevent terminus from consuming the while loop input
-            if terminus wp "$SITE_NAME.dev" -- plugin install "$slug" --version="$version" --force </dev/null; then
+            if terminus wp "$SITE_NAME.dev" -- plugin install "$slug" --version="$version" --force </dev/null 2>/dev/null; then
               echo "$slug $version" >> /tmp/plugins_installed.txt
               [ "$status" = "active" ] && terminus wp "$SITE_NAME.dev" -- plugin activate "$slug" </dev/null 2>/dev/null || true
-              echo "  ✅ Installed: $slug $version"
+              echo "  ✅ Success"
             else
-              echo "  ❌ Failed to install $slug"
+              echo "  ❌ Failed"
             fi
           done < /tmp/plugins_to_install.txt
-          echo "Finished installing plugins. Total: $(wc -l < /tmp/plugins_installed.txt | xargs)"
+          echo ""
+          echo "Total: $(wc -l < /tmp/plugins_installed.txt | xargs)/$TOTAL installed successfully"
 
       - name: Update existing plugins
         if: fromJSON(steps.compare.outputs.plugins_update_count) > 0
         env:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
+          DEBUG_MODE: ${{ github.event.inputs.debug_mode }}
         run: |
           echo "Updating/downgrading ${{ steps.compare.outputs.plugins_update_count }} plugins..."
-          echo ""
-          echo "=== DEBUG: Update Step Starting ==="
-          echo "File contents:"
-          cat /tmp/plugins_to_update.txt
-          echo "================================"
-          echo ""
+
+          if [ "$DEBUG_MODE" = "true" ]; then
+            echo ""
+            echo "=== DEBUG: Update Step Starting ==="
+            echo "File contents:"
+            cat /tmp/plugins_to_update.txt
+            echo "================================"
+            echo ""
+          fi
 
           > /tmp/plugins_updated.txt
           COUNTER=0
           while IFS='|' read -r slug version current_version status; do
-            if [ -z "$slug" ]; then
-              echo "  ⚠️ Skipping empty line"
-              continue
-            fi
+            [ -z "$slug" ] && continue
 
             COUNTER=$((COUNTER + 1))
-            echo "[$COUNTER] Processing: slug='$slug' target='$version' current='$current_version' status='$status'"
-            echo "  Changing ${slug}: ${current_version} → ${version}..."
+            echo "[$COUNTER/${{ steps.compare.outputs.plugins_update_count }}] $slug: $current_version → $version"
 
             # For version changes (upgrade or downgrade), we use install with --force and specific version
-            # Redirect stdin to prevent terminus from consuming the while loop input
-            echo "  Running: terminus wp $SITE_NAME.dev -- plugin install $slug --version=$version --force"
-            if terminus wp "$SITE_NAME.dev" -- plugin install "$slug" --version="$version" --force </dev/null; then
+            if terminus wp "$SITE_NAME.dev" -- plugin install "$slug" --version="$version" --force </dev/null 2>/dev/null; then
               echo "$slug: $current_version → $version" >> /tmp/plugins_updated.txt
               # Apply activation status from manifest
               if [ "$status" = "active" ]; then
-                echo "  Activating $slug..."
-                terminus wp "$SITE_NAME.dev" -- plugin activate "$slug" </dev/null 2>/dev/null || echo "  ⚠️ Activation failed"
+                terminus wp "$SITE_NAME.dev" -- plugin activate "$slug" </dev/null 2>/dev/null || true
               elif [ "$status" = "inactive" ]; then
-                echo "  Deactivating $slug..."
-                terminus wp "$SITE_NAME.dev" -- plugin deactivate "$slug" </dev/null 2>/dev/null || echo "  ⚠️ Deactivation failed"
+                terminus wp "$SITE_NAME.dev" -- plugin deactivate "$slug" </dev/null 2>/dev/null || true
               fi
-              echo "  ✅ Changed: $slug $current_version → $version"
+              echo "  ✅ Success"
             else
-              echo "  ❌ Failed to change $slug version"
+              echo "  ❌ Failed"
             fi
-            echo ""
           done < /tmp/plugins_to_update.txt
 
-          echo "Total plugins processed: $COUNTER"
-          echo "Successfully updated: $(wc -l < /tmp/plugins_updated.txt | xargs)"
+          echo ""
+          echo "Total: $COUNTER processed, $(wc -l < /tmp/plugins_updated.txt | xargs) succeeded"
 
       - name: Activate plugins
         if: fromJSON(steps.compare.outputs.plugins_activate_count) > 0
@@ -567,22 +592,23 @@ jobs:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
         run: |
           echo "Activating ${{ steps.compare.outputs.plugins_activate_count }} plugins..."
-          echo "Plugins to activate:"
-          cat /tmp/plugins_to_activate.txt
-          echo ""
 
           > /tmp/plugins_activated.txt
+          COUNTER=0
+          TOTAL=${{ steps.compare.outputs.plugins_activate_count }}
           while read -r slug; do
             [ -z "$slug" ] && continue
-            echo "  Activating $slug..."
-            if terminus wp "$SITE_NAME.dev" -- plugin activate "$slug" </dev/null; then
+            COUNTER=$((COUNTER + 1))
+            echo "[$COUNTER/$TOTAL] Activating $slug..."
+            if terminus wp "$SITE_NAME.dev" -- plugin activate "$slug" </dev/null 2>/dev/null; then
               echo "$slug" >> /tmp/plugins_activated.txt
-              echo "  ✅ Activated: $slug"
+              echo "  ✅ Success"
             else
-              echo "  ❌ Failed to activate $slug"
+              echo "  ❌ Failed"
             fi
           done < /tmp/plugins_to_activate.txt
-          echo "Total activated: $(wc -l < /tmp/plugins_activated.txt | xargs)"
+          echo ""
+          echo "Total: $(wc -l < /tmp/plugins_activated.txt | xargs)/$TOTAL activated"
 
       - name: Deactivate plugins
         if: fromJSON(steps.compare.outputs.plugins_deactivate_count) > 0
@@ -590,22 +616,23 @@ jobs:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
         run: |
           echo "Deactivating ${{ steps.compare.outputs.plugins_deactivate_count }} plugins..."
-          echo "Plugins to deactivate:"
-          cat /tmp/plugins_to_deactivate.txt
-          echo ""
 
           > /tmp/plugins_deactivated.txt
+          COUNTER=0
+          TOTAL=${{ steps.compare.outputs.plugins_deactivate_count }}
           while read -r slug; do
             [ -z "$slug" ] && continue
-            echo "  Deactivating $slug..."
-            if terminus wp "$SITE_NAME.dev" -- plugin deactivate "$slug" </dev/null; then
+            COUNTER=$((COUNTER + 1))
+            echo "[$COUNTER/$TOTAL] Deactivating $slug..."
+            if terminus wp "$SITE_NAME.dev" -- plugin deactivate "$slug" </dev/null 2>/dev/null; then
               echo "$slug" >> /tmp/plugins_deactivated.txt
-              echo "  ✅ Deactivated: $slug"
+              echo "  ✅ Success"
             else
-              echo "  ❌ Failed to deactivate $slug"
+              echo "  ❌ Failed"
             fi
           done < /tmp/plugins_to_deactivate.txt
-          echo "Total deactivated: $(wc -l < /tmp/plugins_deactivated.txt | xargs)"
+          echo ""
+          echo "Total: $(wc -l < /tmp/plugins_deactivated.txt | xargs)/$TOTAL deactivated"
 
       - name: Uninstall plugins not in manifest
         if: fromJSON(steps.compare.outputs.plugins_uninstall_count) > 0
@@ -613,28 +640,25 @@ jobs:
           SITE_NAME: ${{ steps.load_manifest.outputs.site_name }}
         run: |
           echo "Uninstalling ${{ steps.compare.outputs.plugins_uninstall_count }} plugins not in manifest..."
-          echo "Plugins to uninstall:"
-          cat /tmp/plugins_to_uninstall.txt
-          echo ""
 
           > /tmp/plugins_uninstalled.txt
+          COUNTER=0
+          TOTAL=${{ steps.compare.outputs.plugins_uninstall_count }}
           while IFS='|' read -r slug version; do
             [ -z "$slug" ] && continue
-            echo "  Uninstalling ${slug} ${version}..."
-            # Deactivate first if active
-            echo "  Deactivating if needed..."
-            terminus wp "$SITE_NAME.dev" -- plugin deactivate "$slug" </dev/null 2>/dev/null || echo "  (not active or already deactivated)"
-            # Then uninstall
-            echo "  Running uninstall..."
-            if terminus wp "$SITE_NAME.dev" -- plugin uninstall "$slug" --deactivate </dev/null; then
+            COUNTER=$((COUNTER + 1))
+            echo "[$COUNTER/$TOTAL] Uninstalling $slug $version..."
+            # Deactivate first if active, then uninstall
+            terminus wp "$SITE_NAME.dev" -- plugin deactivate "$slug" </dev/null 2>/dev/null || true
+            if terminus wp "$SITE_NAME.dev" -- plugin uninstall "$slug" --deactivate </dev/null 2>/dev/null; then
               echo "$slug $version" >> /tmp/plugins_uninstalled.txt
-              echo "  ✅ Uninstalled: $slug $version"
+              echo "  ✅ Success"
             else
-              echo "  ❌ Failed to uninstall $slug"
+              echo "  ❌ Failed"
             fi
-            echo ""
           done < /tmp/plugins_to_uninstall.txt
-          echo "Total uninstalled: $(wc -l < /tmp/plugins_uninstalled.txt | xargs)"
+          echo ""
+          echo "Total: $(wc -l < /tmp/plugins_uninstalled.txt | xargs)/$TOTAL uninstalled"
 
       - name: Install new themes
         if: fromJSON(steps.compare.outputs.themes_install_count) > 0
