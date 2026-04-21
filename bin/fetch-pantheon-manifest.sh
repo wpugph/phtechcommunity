@@ -173,17 +173,25 @@ echo "  Themes found: $THEME_COUNT" >&2
 echo "  Debug: THEMES_JSON first 200 chars = ${THEMES_JSON:0:200}" >&2
 
 # Get active theme
-ACTIVE_THEME=$(terminus wp "$SITE_NAME.$ENV" -- theme list --status=active --field=name 2>&1 | grep -v "^\[" | grep -v "^Command:" | head -1 || echo "unknown")
+ACTIVE_THEME=$(terminus wp "$SITE_NAME.$ENV" -- theme list --status=active --field=name 2>&1 | grep -v "^\[" | grep -v "^Command:" | grep -v "^Warning:" | head -1 || echo "unknown")
 
 # Get multisite status
-IS_MULTISITE=$(terminus wp "$SITE_NAME.$ENV" -- eval 'echo is_multisite() ? "true" : "false";' 2>&1 | grep -E "^(true|false)" || echo "false")
+IS_MULTISITE=$(terminus wp "$SITE_NAME.$ENV" -- eval 'echo is_multisite() ? "true" : "false";' 2>&1 | grep -E "^(true|false)$" | head -1 || echo "false")
 
 # Process plugins JSON to object format (with error handling)
 if [ "$PLUGINS_JSON" = "[]" ] || [ -z "$PLUGINS_JSON" ]; then
   PLUGINS_OBJ="{}"
 else
-  PLUGINS_OBJ=$(echo "$PLUGINS_JSON" | jq -c 'map({(.name): {version: .version, status: .status, update: .update, update_version: .update_version}}) | add // {}' 2>/dev/null) || PLUGINS_OBJ=""
-  # Simple validation: check if it looks like valid JSON
+  # Try to transform, capture error
+  JQ_ERROR=$(echo "$PLUGINS_JSON" | jq -c 'map({(.name): {version: .version, status: .status, update: .update, update_version: .update_version}}) | add // {}' 2>&1 >/dev/null)
+  if [ $? -eq 0 ]; then
+    PLUGINS_OBJ=$(echo "$PLUGINS_JSON" | jq -c 'map({(.name): {version: .version, status: .status, update: .update, update_version: .update_version}}) | add // {}' 2>/dev/null)
+  else
+    echo "  ⚠️  jq transformation failed for plugins: $JQ_ERROR" >&2
+    PLUGINS_OBJ="{}"
+  fi
+
+  # Final validation
   if [ -z "$PLUGINS_OBJ" ] || [ "$PLUGINS_OBJ" = "null" ]; then
     echo "  ⚠️  Could not process plugins to object format, using empty" >&2
     PLUGINS_OBJ="{}"
@@ -194,8 +202,16 @@ fi
 if [ "$THEMES_JSON" = "[]" ] || [ -z "$THEMES_JSON" ]; then
   THEMES_OBJ="{}"
 else
-  THEMES_OBJ=$(echo "$THEMES_JSON" | jq -c 'map({(.name): {version: .version, status: .status, update: .update}}) | add // {}' 2>/dev/null) || THEMES_OBJ=""
-  # Simple validation: check if it looks like valid JSON
+  # Try to transform, capture error
+  JQ_ERROR=$(echo "$THEMES_JSON" | jq -c 'map({(.name): {version: .version, status: .status, update: .update}}) | add // {}' 2>&1 >/dev/null)
+  if [ $? -eq 0 ]; then
+    THEMES_OBJ=$(echo "$THEMES_JSON" | jq -c 'map({(.name): {version: .version, status: .status, update: .update}}) | add // {}' 2>/dev/null)
+  else
+    echo "  ⚠️  jq transformation failed for themes: $JQ_ERROR" >&2
+    THEMES_OBJ="{}"
+  fi
+
+  # Final validation
   if [ -z "$THEMES_OBJ" ] || [ "$THEMES_OBJ" = "null" ]; then
     echo "  ⚠️  Could not process themes to object format, using empty" >&2
     THEMES_OBJ="{}"
