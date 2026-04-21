@@ -112,22 +112,23 @@ jobs:
               echo "" >&2
               echo "  Returning minimal data for $ENV" >&2
               # Return minimal valid JSON but don't fail the script
+              TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
               cat <<ERROREOF
-          {
-            "site_name": "$SITE_NAME",
-            "site_id": "$SITE_UUID",
-            "environment": "$ENV",
-            "wordpress": {"version": "unknown", "db_version": "unknown"},
-            "php_version": "unknown",
-            "plugins": {},
-            "themes": {},
-            "mu_plugins": {},
-            "active_theme": "unknown",
-            "multisite": false,
-            "last_updated": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
-            "error": "WP-CLI connectivity failed"
-          }
-          ERROREOF
+{
+  "site_name": "$SITE_NAME",
+  "site_id": "$SITE_UUID",
+  "environment": "$ENV",
+  "wordpress": {"version": "unknown", "db_version": "unknown"},
+  "php_version": "unknown",
+  "plugins": {},
+  "themes": {},
+  "mu_plugins": {},
+  "active_theme": "unknown",
+  "multisite": false,
+  "last_updated": "$TIMESTAMP",
+  "error": "WP-CLI connectivity failed"
+}
+ERROREOF
               return 0
             fi
             echo "  ✓ WP-CLI connected" >&2
@@ -198,24 +199,25 @@ jobs:
             fi
 
             # Build JSON (using pre-processed objects)
+            TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
             cat <<ENVEOF
-          {
-            "site_name": "$SITE_NAME",
-            "site_id": "$SITE_UUID",
-            "environment": "$ENV",
-            "wordpress": {
-              "version": "$WP_VERSION",
-              "db_version": "unknown"
-            },
-            "php_version": "$PHP_VERSION",
-            "plugins": $PLUGINS_OBJ,
-            "themes": $THEMES_OBJ,
-            "mu_plugins": {},
-            "active_theme": "$ACTIVE_THEME",
-            "multisite": $IS_MULTISITE,
-            "last_updated": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-          }
-          ENVEOF
+{
+  "site_name": "$SITE_NAME",
+  "site_id": "$SITE_UUID",
+  "environment": "$ENV",
+  "wordpress": {
+    "version": "$WP_VERSION",
+    "db_version": "unknown"
+  },
+  "php_version": "$PHP_VERSION",
+  "plugins": $PLUGINS_OBJ,
+  "themes": $THEMES_OBJ,
+  "mu_plugins": {},
+  "active_theme": "$ACTIVE_THEME",
+  "multisite": $IS_MULTISITE,
+  "last_updated": "$TIMESTAMP"
+}
+ENVEOF
           }
 
           # Determine which environments to sync
