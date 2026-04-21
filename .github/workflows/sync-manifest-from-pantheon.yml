@@ -59,8 +59,15 @@ jobs:
         run: |
           echo "🔄 Syncing manifest from Pantheon..."
 
-          # Get site UUID
-          SITE_UUID=$(terminus site:info "$SITE_NAME" --field=id)
+          # Verify site exists and get UUID
+          echo "Verifying site access..."
+          if ! SITE_UUID=$(terminus site:info "$SITE_NAME" --field=id 2>&1); then
+            echo "❌ ERROR: Cannot access site '$SITE_NAME'"
+            echo "Terminus output:"
+            terminus site:info "$SITE_NAME" 2>&1 | head -10
+            exit 1
+          fi
+          echo "✓ Site UUID: $SITE_UUID"
 
           # Function to get environment data
           get_env_data() {
@@ -74,12 +81,24 @@ jobs:
 
             # Check connection mode and switch to SFTP if needed (WP-CLI requires SFTP mode)
             echo "  Checking connection mode..." >&2
-            CONN_MODE=$(terminus connection:info "$SITE_NAME.$ENV" --field=mode 2>/dev/null || echo "unknown")
+            CONN_MODE_OUTPUT=$(terminus connection:info "$SITE_NAME.$ENV" --field=mode 2>&1)
+            CONN_MODE=$(echo "$CONN_MODE_OUTPUT" | head -1 | tr -d '[:space:]')
+
+            if [ -z "$CONN_MODE" ] || [ "$CONN_MODE" = "" ]; then
+              echo "  Warning: Could not determine connection mode" >&2
+              echo "  Terminus output: $CONN_MODE_OUTPUT" >&2
+              CONN_MODE="unknown"
+            fi
+
             echo "  Current mode: $CONN_MODE" >&2
 
             if [ "$CONN_MODE" = "git" ]; then
               echo "  Switching to SFTP mode (required for WP-CLI)..." >&2
               terminus connection:set "$SITE_NAME.$ENV" sftp 2>&1 | head -1
+              sleep 3
+            elif [ "$CONN_MODE" = "unknown" ]; then
+              echo "  Attempting to set SFTP mode anyway..." >&2
+              terminus connection:set "$SITE_NAME.$ENV" sftp 2>&1 | head -3
               sleep 3
             fi
 
@@ -104,11 +123,28 @@ jobs:
               echo "  ❌ ERROR: Cannot connect to WordPress via WP-CLI after 3 attempts" >&2
               echo "" >&2
               echo "  Diagnostics:" >&2
-              echo "    Environment status:" >&2
-              terminus env:info "$SITE_NAME.$ENV" 2>&1 | grep -E "(initialized|locked|connection_mode)" | sed 's/^/      /' || echo "      (unable to get status)"
+
+              echo "    Checking if environment exists..." >&2
+              if terminus env:list "$SITE_NAME" --format=list 2>/dev/null | grep -q "^$ENV$"; then
+                echo "      ✓ Environment '$ENV' exists" >&2
+              else
+                echo "      ✗ Environment '$ENV' NOT found!" >&2
+                echo "      Available environments:" >&2
+                terminus env:list "$SITE_NAME" --format=list 2>&1 | sed 's/^/        /'
+              fi
               echo "" >&2
+
+              echo "    Environment info:" >&2
+              terminus env:info "$SITE_NAME.$ENV" 2>&1 | head -10 | sed 's/^/      /'
+              echo "" >&2
+
               echo "    Last WP-CLI error (full output):" >&2
-              terminus wp "$SITE_NAME.$ENV" -- core version 2>&1 | sed 's/^/      /'
+              WP_ERROR=$(terminus wp "$SITE_NAME.$ENV" -- core version 2>&1)
+              if [ -z "$WP_ERROR" ]; then
+                echo "      (no output from terminus - command timed out or failed silently)" >&2
+              else
+                echo "$WP_ERROR" | sed 's/^/      /'
+              fi
               echo "" >&2
               echo "  Returning minimal data for $ENV" >&2
               # Return minimal valid JSON but don't fail the script
