@@ -148,28 +148,22 @@ jobs:
               fi
               echo "" >&2
               echo "  Returning minimal data for $ENV" >&2
-              echo "  Debug: SITE_NAME=$SITE_NAME, SITE_UUID=$SITE_UUID, ENV=$ENV" >&2
-              # Return minimal valid JSON using jq (no heredoc issues)
+              # Return minimal valid JSON using printf (simpler than jq)
               TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-              jq -n \
-                --arg site_name "$SITE_NAME" \
-                --arg site_id "$SITE_UUID" \
-                --arg env "$ENV" \
-                --arg timestamp "$TIMESTAMP" \
-                '{
-                  "site_name": $site_name,
-                  "site_id": $site_id,
-                  "environment": $env,
-                  "wordpress": {"version": "unknown", "db_version": "unknown"},
-                  "php_version": "unknown",
-                  "plugins": {},
-                  "themes": {},
-                  "mu_plugins": {},
-                  "active_theme": "unknown",
-                  "multisite": false,
-                  "last_updated": $timestamp,
-                  "error": "WP-CLI connectivity failed"
-                }' || { echo "  ERROR: jq command failed" >&2; echo '{}'; }
+              printf '{
+  "site_name": "%s",
+  "site_id": "%s",
+  "environment": "%s",
+  "wordpress": {"version": "unknown", "db_version": "unknown"},
+  "php_version": "unknown",
+  "plugins": {},
+  "themes": {},
+  "mu_plugins": {},
+  "active_theme": "unknown",
+  "multisite": false,
+  "last_updated": "%s",
+  "error": "WP-CLI connectivity failed"
+}\n' "$SITE_NAME" "$SITE_UUID" "$ENV" "$TIMESTAMP"
               return 0
             fi
             echo "  ✓ WP-CLI connected" >&2
