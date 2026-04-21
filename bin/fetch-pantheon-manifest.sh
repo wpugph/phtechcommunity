@@ -61,13 +61,22 @@ echo "  Command: terminus wp $SITE_NAME.$ENV -- core version" >&2
 WP_CLI_READY=false
 for i in {1..3}; do
   echo "    Attempt $i/3..." >&2
-  if terminus wp "$SITE_NAME.$ENV" -- core version --quiet 2>/dev/null; then
+  WP_TEST_OUTPUT=$(terminus wp "$SITE_NAME.$ENV" -- core version 2>&1)
+  WP_TEST_EXIT=$?
+
+  if [ $WP_TEST_EXIT -eq 0 ] && echo "$WP_TEST_OUTPUT" | grep -qE "^[0-9]+\.[0-9]+"; then
     WP_CLI_READY=true
-    echo "    ✓ Success!" >&2
+    echo "    ✓ Success! WordPress version: $WP_TEST_OUTPUT" >&2
     break
+  else
+    echo "    Failed (exit code: $WP_TEST_EXIT)" >&2
+    if [ $i -eq 1 ]; then
+      echo "    Error output: $WP_TEST_OUTPUT" | head -3 >&2
+    fi
   fi
+
   if [ $i -lt 3 ]; then
-    echo "    Failed, waiting 5s..." >&2
+    echo "    Waiting 5s before retry..." >&2
     sleep 5
   fi
 done
@@ -91,13 +100,22 @@ if [ "$WP_CLI_READY" = "false" ]; then
   terminus env:info "$SITE_NAME.$ENV" 2>&1 | head -10 | sed 's/^/      /' >&2
   echo "" >&2
 
-  echo "    Last WP-CLI error (full output):" >&2
+  echo "    Last WP-CLI error:" >&2
+  echo "      Command: terminus wp $SITE_NAME.$ENV -- core version" >&2
+  echo "      Output:" >&2
   WP_ERROR=$(terminus wp "$SITE_NAME.$ENV" -- core version 2>&1)
   if [ -z "$WP_ERROR" ]; then
-    echo "      (no output from terminus - command timed out or failed silently)" >&2
+    echo "        (no output from terminus - command timed out or failed silently)" >&2
   else
-    echo "$WP_ERROR" | sed 's/^/      /' >&2
+    echo "$WP_ERROR" | sed 's/^/        /' >&2
   fi
+  echo "" >&2
+
+  # Also try a simpler terminus command to see if it's a WP-CLI specific issue
+  echo "    Testing basic terminus connection:" >&2
+  echo "      Command: terminus env:info $SITE_NAME.$ENV --field=connection_mode" >&2
+  BASIC_TEST=$(terminus env:info "$SITE_NAME.$ENV" --field=connection_mode 2>&1 || echo "FAILED")
+  echo "      Result: $BASIC_TEST" >&2
   echo "" >&2
 
   echo "  Returning minimal data for $ENV" >&2
