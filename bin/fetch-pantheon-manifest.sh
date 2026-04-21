@@ -180,14 +180,22 @@ IS_MULTISITE=$(terminus wp "$SITE_NAME.$ENV" -- eval 'echo is_multisite() ? "tru
 if [ "$PLUGINS_JSON" = "[]" ] || [ -z "$PLUGINS_JSON" ]; then
   PLUGINS_OBJ="{}"
 else
-  PLUGINS_OBJ=$(echo "$PLUGINS_JSON" | jq -c 'map({(.name): {version: .version, status: .status, update: .update, update_version: .update_version}}) | add // {}' 2>/dev/null || echo "{}")
+  PLUGINS_OBJ=$(echo "$PLUGINS_JSON" | jq -c 'map({(.name): {version: .version, status: .status, update: .update, update_version: .update_version}}) | add // {}' 2>&1) || PLUGINS_OBJ="{}"
+  # Validate it's valid JSON, otherwise use empty object
+  if ! echo "$PLUGINS_OBJ" | jq -e '.' >/dev/null 2>&1 || [ "$PLUGINS_OBJ" = "null" ] || [ "$PLUGINS_OBJ" = "0" ]; then
+    PLUGINS_OBJ="{}"
+  fi
 fi
 
 # Process themes JSON to object format (with error handling)
 if [ "$THEMES_JSON" = "[]" ] || [ -z "$THEMES_JSON" ]; then
   THEMES_OBJ="{}"
 else
-  THEMES_OBJ=$(echo "$THEMES_JSON" | jq -c 'map({(.name): {version: .version, status: .status, update: .update}}) | add // {}' 2>/dev/null || echo "{}")
+  THEMES_OBJ=$(echo "$THEMES_JSON" | jq -c 'map({(.name): {version: .version, status: .status, update: .update}}) | add // {}' 2>&1) || THEMES_OBJ="{}"
+  # Validate it's valid JSON, otherwise use empty object
+  if ! echo "$THEMES_OBJ" | jq -e '.' >/dev/null 2>&1 || [ "$THEMES_OBJ" = "null" ] || [ "$THEMES_OBJ" = "0" ]; then
+    THEMES_OBJ="{}"
+  fi
 fi
 
 # Build JSON using reusable script
