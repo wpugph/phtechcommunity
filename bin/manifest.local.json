@@ -6,7 +6,7 @@
     "version": "6.9.4",
     "db_version": "60717"
   },
-  "php_version": "7.4.30",
+  "php_version": "8.5.3",
   "plugins": {
     "advanced-access-manager": {
       "version": "7.1.0",
@@ -80,12 +80,6 @@
       "update": "none",
       "update_version": ""
     },
-    "php-compatibility-checker": {
-      "version": "1.6.3",
-      "status": "active",
-      "update": "none",
-      "update_version": ""
-    },
     "phtech-contact-routing": {
       "version": "1.0.0",
       "status": "active",
@@ -94,7 +88,7 @@
     },
     "seo-by-rank-math": {
       "version": "1.0.268",
-      "status": "inactive",
+      "status": "active",
       "update": "none",
       "update_version": ""
     },
@@ -118,12 +112,6 @@
     },
     "astra-sites": {
       "version": "4.5.3",
-      "status": "active",
-      "update": "none",
-      "update_version": ""
-    },
-    "super-socializer": {
-      "version": "7.14.5",
       "status": "active",
       "update": "none",
       "update_version": ""
@@ -195,5 +183,5 @@
   },
   "active_theme": "astra",
   "multisite": false,
-  "last_updated": "2026-04-21T06:18:12Z"
+  "last_updated": "2026-04-21T06:50:19Z"
 }
