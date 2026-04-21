@@ -53,6 +53,20 @@ jobs:
         run: |
           terminus auth:login --machine-token="$TERMINUS_TOKEN"
 
+      - name: Setup SSH for Pantheon
+        env:
+          PANTHEON_SSH_KEY: ${{ secrets.PANTHEON_SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          echo "$PANTHEON_SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          cat >> ~/.ssh/config <<EOF
+          Host *.drush.in
+              StrictHostKeyChecking no
+              UserKnownHostsFile=/dev/null
+          EOF
+
       - name: Sync manifest from Pantheon
         env:
           SITE_NAME: ${{ secrets.PANTHEON_SITE_NAME }}
