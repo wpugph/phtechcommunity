@@ -55,10 +55,6 @@ elif [ "$CONN_MODE" = "unknown" ] || echo "$CONN_MODE" | grep -qi "requested"; t
   sleep 3
 fi
 
-# Pre-add SSH host to known_hosts to eliminate "Permanently added" warnings
-echo "  Adding SSH host to known_hosts..." >&2
-ssh-keyscan -t rsa -p 2222 "appserver.$ENV.$SITE_UUID.drush.in" >> ~/.ssh/known_hosts 2>/dev/null || true
-
 # Test WP-CLI connectivity with retry
 echo "  Testing WP-CLI connectivity..." >&2
 echo "  Command: terminus wp $SITE_NAME.$ENV -- core version" >&2
@@ -138,9 +134,17 @@ PHP_VERSION=$(terminus env:info "$SITE_NAME.$ENV" --field=php_version 2>/dev/nul
 # Get plugins (robust JSON extraction)
 PLUGINS_RAW=$(terminus wp "$SITE_NAME.$ENV" -- plugin list --format=json 2>&1)
 
-# Extract JSON by finding the first [{ (JSON array of objects)
-# Now that SSH warnings are suppressed, this should work cleanly
-PLUGINS_JSON=$(echo "$PLUGINS_RAW" | grep -o '\[\{.*' | head -1)
+# Extract ONLY the JSON array: everything from first [{ to last }]
+# Step 1: Remove everything before [{
+# Step 2: Remove everything after the last }]
+PLUGINS_JSON=$(echo "$PLUGINS_RAW" | sed 's/.*\(\[\{.*\}\]\).*/\1/')
+
+# If extraction failed (no match), try simpler pattern
+if [ -z "$PLUGINS_JSON" ] || [[ ! "$PLUGINS_JSON" =~ ^\[ ]]; then
+  echo "  ⚠️  Could not extract plugins JSON array" >&2
+  echo "  Raw output (first 300 chars): ${PLUGINS_RAW:0:300}" >&2
+  PLUGINS_JSON="[]"
+fi
 
 # Validate it's actually valid JSON
 set +e
@@ -148,9 +152,9 @@ echo "$PLUGINS_JSON" | jq '.' >/dev/null 2>&1
 JSON_VALID=$?
 set -e
 
-if [ $JSON_VALID -ne 0 ] || [ -z "$PLUGINS_JSON" ]; then
-  echo "  ⚠️  Could not parse plugins JSON" >&2
-  echo "  Raw output (first 300 chars): ${PLUGINS_RAW:0:300}" >&2
+if [ $JSON_VALID -ne 0 ]; then
+  echo "  ⚠️  Extracted JSON is invalid" >&2
+  echo "  Extracted (first 200 chars): ${PLUGINS_JSON:0:200}" >&2
   PLUGINS_JSON="[]"
 fi
 
@@ -165,9 +169,17 @@ echo "  Debug: PLUGINS_JSON first 200 chars = ${PLUGINS_JSON:0:200}" >&2
 # Get themes (robust JSON extraction)
 THEMES_RAW=$(terminus wp "$SITE_NAME.$ENV" -- theme list --format=json 2>&1)
 
-# Extract JSON by finding the first [{ (JSON array of objects)
-# Now that SSH warnings are suppressed, this should work cleanly
-THEMES_JSON=$(echo "$THEMES_RAW" | grep -o '\[\{.*' | head -1)
+# Extract ONLY the JSON array: everything from first [{ to last }]
+# Step 1: Remove everything before [{
+# Step 2: Remove everything after the last }]
+THEMES_JSON=$(echo "$THEMES_RAW" | sed 's/.*\(\[\{.*\}\]\).*/\1/')
+
+# If extraction failed (no match), try simpler pattern
+if [ -z "$THEMES_JSON" ] || [[ ! "$THEMES_JSON" =~ ^\[ ]]; then
+  echo "  ⚠️  Could not extract themes JSON array" >&2
+  echo "  Raw output (first 300 chars): ${THEMES_RAW:0:300}" >&2
+  THEMES_JSON="[]"
+fi
 
 # Validate it's actually valid JSON
 set +e
@@ -175,9 +187,9 @@ echo "$THEMES_JSON" | jq '.' >/dev/null 2>&1
 JSON_VALID=$?
 set -e
 
-if [ $JSON_VALID -ne 0 ] || [ -z "$THEMES_JSON" ]; then
-  echo "  ⚠️  Could not parse themes JSON" >&2
-  echo "  Raw output (first 300 chars): ${THEMES_RAW:0:300}" >&2
+if [ $JSON_VALID -ne 0 ]; then
+  echo "  ⚠️  Extracted JSON is invalid" >&2
+  echo "  Extracted (first 200 chars): ${THEMES_JSON:0:200}" >&2
   THEMES_JSON="[]"
 fi
 
